@@ -4,7 +4,7 @@ export const config = {
   runtime: 'edge',
 }
 
-const app = new Hono()
+export const app = new Hono()
 
 // -----------------------------------------------
 // Helper to check a Telegram link
@@ -23,10 +23,12 @@ async function checkLink(url: string): Promise<"VALID" | "INVALID"> {
   }
 }
 
+const routes = new Hono()
+
 // ------------------------------------------------
 // GET /?url=...
 // ------------------------------------------------
-app.get("/", async (c) => {
+routes.get("/", async (c) => {
   const url = c.req.query("url")
 
   if (!url) return c.json({ error: "Missing ?url=" })
@@ -38,7 +40,7 @@ app.get("/", async (c) => {
 // ------------------------------------------------
 // POST /   { "links": ["...","..."] }
 // ------------------------------------------------
-app.post("/", async (c) => {
+routes.post("/", async (c) => {
   const body = await c.req.json().catch(() => null)
 
   // Type guard
@@ -69,4 +71,9 @@ app.post("/", async (c) => {
   })
 })
 
-export default app
+app.route('/', routes)
+app.route('/api', routes)
+
+import { handle } from 'hono/vercel'
+
+export default handle(app)
