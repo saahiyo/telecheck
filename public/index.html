@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Link Checker Dashboard</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f1117;
+      color: #fff;
+      margin: 0;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    textarea {
+      width: 90%;
+      max-width: 600px;
+      height: 130px;
+      padding: 12px;
+      background: #1c1f26;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 12px 22px;
+      background: #0070f3;
+      border: none;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: 0.2s;
+    }
+
+    button:hover {
+      background: #0059c9;
+    }
+
+    .results {
+      margin-top: 30px;
+      width: 90%;
+      max-width: 700px;
+    }
+
+    .card {
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      color: white;
+    }
+
+    .valid { background: #046c4e; }
+    .invalid { background: #9b1d1d; }
+    .unknown { background: #6b7280; }
+
+    .loader {
+      margin-top: 20px;
+      font-size: 18px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Telegram Link Checker</h1>
+  <p>Enter one or more Telegram links/usernames (one per line):</p>
+
+  <textarea id="linksInput" placeholder="@durov&#10;https://t.me/example&#10;t.me/testchannel"></textarea>
+
+  <button onclick="checkLinks()">Check Links</button>
+
+  <div class="loader" id="loader">Checking links…</div>
+
+  <div class="results" id="results"></div>
+
+  <script>
+    const API_BASE = "https://telecheck.vercel.app";
+
+    async function checkLinks() {
+      const input = document.getElementById("linksInput").value.trim();
+      const loader = document.getElementById("loader");
+      const resultsContainer = document.getElementById("results");
+
+      if (!input) return alert("Please enter at least one link.");
+
+      loader.style.display = "block";
+      resultsContainer.innerHTML = "";
+
+      const links = input.split("\n").map(l => l.trim()).filter(Boolean);
+
+      // POST batch request
+      const res = await fetch(API_BASE + "/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links })
+      });
+
+      const data = await res.json();
+      loader.style.display = "none";
+
+      if (!data.groups) {
+        resultsContainer.innerHTML = "<p>Error: Invalid API response</p>";
+        return;
+      }
+
+      const { valid, invalid, unknown } = data.groups;
+
+      // Helper to make cards
+      const buildCard = (item, cls) => `
+        <div class="card ${cls}">
+          <strong>${item.url}</strong><br>
+          <span>${item.status.toUpperCase()}: ${item.reason}</span>
+        </div>
+      `;
+
+      // Render all results
+      resultsContainer.innerHTML = `
+        <h2>Results (${data.total})</h2>
+
+        ${valid.map(v => buildCard(v, "valid")).join("")}
+        ${invalid.map(v => buildCard(v, "invalid")).join("")}
+        ${unknown.map(v => buildCard(v, "unknown")).join("")}
+      `;
+    }
+  </script>
+
+</body>
+</html>

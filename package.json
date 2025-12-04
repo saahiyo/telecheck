@@ -4,6 +4,9 @@
   "dependencies": {
     "hono": "^4.10.7"
   },
+  "scripts": {
+    "dev": "vercel dev"
+  },
   "devDependencies": {
     "@types/node": "^20.11.17",
     "tsx": "^4.7.1",

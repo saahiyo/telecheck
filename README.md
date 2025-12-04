@@ -1,4 +1,5 @@
-# 🚀 Telegram Link Checker API  
+# 🚀 Telegram Link Checker API
+
 A fast, lightweight **Telegram link validator API** built with **Hono**, deployed on **Vercel Edge Runtime**.
 
 Live API:  
@@ -10,16 +11,17 @@ This API checks whether a Telegram username, group, channel, or invite link **ac
 
 ## 🔥 Features
 
-- 🟢 No Telegram API credentials needed  
-- ⚡ Ultra-fast parallel checks via Promise.all()  
-- 🧹 Input normalization:  
-  - `@username` → `https://t.me/username`  
-  - `username123` → `https://t.me/username123`  
-- 🔍 Accurate validation using Telegram HTML metadata  
-- 📦 Batch validation (POST)  
-- 🗂 Grouped output: valid / invalid / unknown  
-- ⚙️ Single endpoint `/` for everything  
-- 🪶 Edge-optimized for lowest latency  
+- 🟢 No Telegram API credentials needed
+- ⚡ Ultra-fast parallel checks via Promise.all()
+- 🧹 Input normalization:
+  - `@username` → `https://t.me/username`
+  - `username123` → `https://t.me/username123`
+- 🔍 Accurate validation using Telegram HTML metadata
+- 📦 Batch validation (POST)
+- 🗂 Grouped output: valid / invalid / unknown
+- ⚙️ Single endpoint `/` for everything
+- 🪶 Edge-optimized for lowest latency
+- 🖥️ **Built-in Frontend Dashboard** for easy manual checking
 
 ---
 
@@ -27,24 +29,21 @@ This API checks whether a Telegram username, group, channel, or invite link **ac
 
 ### ✅ 1. **Single Link Check** (GET)
 
-```
+```http
 GET https://telecheck.vercel.app/?link=<telegram_link_or_username>
 ```
 
-#### Example:
+**Example:**
+`https://telecheck.vercel.app/?link=@durov`
 
-```
-https://telecheck.vercel.app/?link=@durov
-```
-
-#### Example Response:
-
+**Response:**
 ```json
 {
   "input": "@durov",
   "normalized": "https://t.me/durov",
   "status": "valid",
-  "reason": "Telegram page exists and is active"
+  "reason": "Telegram page exists and is active",
+  "credits": "@saahiyo"
 }
 ```
 
@@ -52,13 +51,12 @@ https://telecheck.vercel.app/?link=@durov
 
 ### ✅ 2. **Multiple Links Check** (POST)
 
-```
+```http
 POST https://telecheck.vercel.app/
 Content-Type: application/json
 ```
 
-#### Body:
-
+**Body:**
 ```json
 {
   "links": [
@@ -69,73 +67,87 @@ Content-Type: application/json
 }
 ```
 
-#### Response:
-
+**Response:**
 ```json
 {
   "total": 3,
   "groups": {
     "valid": [
-      {
-        "url": "https://t.me/durov",
-        "status": "valid",
-        "reason": "Telegram page exists and is active"
-      }
+      { "url": "https://t.me/durov", "status": "valid", "reason": "..." }
     ],
     "invalid": [
-      {
-        "url": "https://t.me/notfound12345",
-        "status": "invalid",
-        "reason": "Telegram page does not exist or is unavailable"
-      }
+      { "url": "https://t.me/notfound12345", "status": "invalid", "reason": "..." }
     ],
     "unknown": []
-  }
+  },
+  "credits": "@saahiyo"
 }
 ```
+
+---
+
+### ℹ️ 3. **API Info** (GET)
+
+Returns metadata about the API.
+
+```http
+GET https://telecheck.vercel.app/info
+```
+
+---
+
+### 🏥 4. **Health Check** (GET)
+
+Returns the API status and uptime.
+
+```http
+GET https://telecheck.vercel.app/health
+```
+
+---
+
+### 📊 5. **Global Stats** (GET)
+
+Returns usage statistics for the current deployment instance (resets on redeploy).
+
+```http
+GET https://telecheck.vercel.app/stats
+```
+
+---
+
+### 🧹 6. **Normalize Link** (GET)
+
+Test the normalization logic without performing a check.
+
+```http
+GET https://telecheck.vercel.app/normalize?value=@username
+```
+
+---
+
+## 🖥️ Frontend Dashboard
+
+The project includes a simple HTML frontend for manual testing.
+Access it by visiting the root URL in a browser:
+
+👉 **https://telecheck.vercel.app/**
+
+Located in `public/index.html`.
 
 ---
 
 ## 🧠 How It Works
 
 Telegram shows a public preview for every valid user/channel/group.  
-If a Telegram entity exists, the HTML includes:
+If a Telegram entity exists, the HTML includes `tgme_page_title`.
 
-```
-tgme_page_title
-```
-
-Validation logic:
-
-- Contains `tgme_page_title` → **VALID**  
-- Does not contain it → **INVALID**  
+**Validation logic:**
+- Contains `tgme_page_title` → **VALID**
+- Does not contain it → **INVALID**
 - Network failure → **UNKNOWN**
 
-This avoids Telegram API credentials and works for:
-
-- Users  
-- Channels  
-- Groups  
-- Bots  
-- Invite links  
-
----
-
-## 🧪 Testing (Command Line)
-
-### Single link:
-
-```
-curl "https://telecheck.vercel.app/?link=@durov"
-```
-
-### Multiple links:
-
-```
-curl -X POST "https://telecheck.vercel.app/" \
-  -H "Content-Type: application/json" \
-  -d '{"links":["@durov","t.me/notfound123"]}'
-```
+This avoids Telegram API credentials and works for Users, Channels, Groups, Bots, and Invite links.
 
 ---
 
@@ -143,9 +155,11 @@ curl -X POST "https://telecheck.vercel.app/" \
 
 ```
 src/
-  └── index.ts
-README.md
-vercel.json
+  └── index.ts       # Main API logic (Hono)
+public/
+  └── index.html     # Frontend Dashboard
+package.json         # Dependencies & Scripts
+README.md            # Documentation
 ```
 
 ---
@@ -162,16 +176,20 @@ vercel.json
 
 ## 🛠 Local Development
 
-```
-npm install
-npm run dev
-```
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-Local URL:
+2. **Run locally:**
+   ```bash
+   npm run dev
+   ```
+   This runs `vercel dev` to simulate the Edge environment.
 
-```
-http://localhost:3000
-```
+3. **Open in browser:**
+   - API: `http://localhost:3000`
+   - Dashboard: `http://localhost:3000` (served from `public/`)
 
 ---
 
@@ -192,4 +210,3 @@ MIT — free for personal and commercial use.
 
 Telegram Link Checker built by **Shakir**  
 Live API: https://telecheck.vercel.app/
-
