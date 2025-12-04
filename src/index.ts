@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 
 const app = new Hono()
 
-// Normalize usernames and URLs
+// Normalize Telegram link or username
 const normalize = (input: string) => {
   let s = input.trim()
   if (!s) return ""
@@ -14,34 +14,46 @@ const normalize = (input: string) => {
   return s
 }
 
-// Simple HTTP check
+// Check Telegram HTML signature
 const httpCheck = async (url: string) => {
   try {
     const res = await fetch(url, { redirect: "follow" })
-    const status = res.status
+    const html = await res.text()
 
-    if (status === 200) return { status: "valid", reason: "OK" }
-    if ([404, 410].includes(status)) return { status: "invalid", reason: "Not Found" }
-    if ([301, 302, 303, 307, 308].includes(status))
-      return { status: "valid", reason: `Redirect ${status}` }
+    // Valid Telegram pages contain tgme_page_title
+    if (html.includes("tgme_page_title")) {
+      return {
+        status: "valid",
+        reason: "Telegram page exists and is active"
+      }
+    }
 
-    return { status: "unknown", reason: `HTTP ${status}` }
+    return {
+      status: "invalid",
+      reason: "Telegram page does not exist or is unavailable"
+    }
+
   } catch (err: any) {
-    return { status: "unknown", reason: err.message || "Network error" }
+    return {
+      status: "unknown",
+      reason: err?.message || "Unexpected network error"
+    }
   }
 }
 
-// -------------------------------------------------------
-// ⚡ GET /?link=xxxx  (single link check)
-// -------------------------------------------------------
-
+// --------------------------------------------
+// GET /?link=xxxx
+// --------------------------------------------
 app.get('/', async (c) => {
   const link = c.req.query("link")
 
   if (!link) {
     return c.json({
-      message: "Telegram Link Checker API",
-      usage: "/?link=https://t.me/example\nPOST JSON { links: [] }",
+      api: "Telegram Link Checker API",
+      usage: {
+        single: "/?link=https://t.me/example",
+        multiple: "POST JSON → { links: [] }"
+      }
     })
   }
 
@@ -55,12 +67,11 @@ app.get('/', async (c) => {
   })
 })
 
-// -------------------------------------------------------
-// ⚡ POST /  (multiple link check)
-// -------------------------------------------------------
-
+// --------------------------------------------
+// POST /
+// --------------------------------------------
 app.post('/', async (c) => {
-  let body: any
+  let body: any = {}
 
   try {
     body = await c.req.json()
@@ -68,28 +79,35 @@ app.post('/', async (c) => {
     return c.json({ error: "Invalid JSON" }, 400)
   }
 
-  const list: string[] = body.links || []
+  const links: string[] = body.links || []
 
-  if (!Array.isArray(list) || list.length === 0) {
+  if (!Array.isArray(links) || links.length === 0) {
     return c.json({ error: "Provide { links: [...] }" }, 400)
   }
 
-  // Normalize + dedupe
-  const normalized = Array.from(new Set(list.map(normalize).filter(Boolean)))
+  // Normalize & dedupe
+  const normalized = Array.from(new Set(links.map(normalize).filter(Boolean)))
 
+  // Parallel multi-thread style using Promise.all
   const results = await Promise.all(
     normalized.map(async (url) => {
-      const check = await httpCheck(url)
-      return {
-        url,
-        ...check
-      }
+      const res = await httpCheck(url)
+      return { url, ...res }
     })
   )
 
+  // Grouping
+  const valid = results.filter(r => r.status === "valid")
+  const invalid = results.filter(r => r.status === "invalid")
+  const unknown = results.filter(r => r.status === "unknown")
+
   return c.json({
-    count: results.length,
-    results
+    total: results.length,
+    groups: {
+      valid,
+      invalid,
+      unknown
+    }
   })
 })
 
