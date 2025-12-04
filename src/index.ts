@@ -53,7 +53,8 @@ app.get('/', async (c) => {
       usage: {
         single: "/?link=https://t.me/example",
         multiple: "POST JSON → { links: [] }"
-      }
+      },
+      credits: "@saahiyo"
     })
   }
 
@@ -63,7 +64,8 @@ app.get('/', async (c) => {
   return c.json({
     input: link,
     normalized,
-    ...result
+    ...result,
+    credits: "@saahiyo"
   })
 })
 
@@ -107,7 +109,8 @@ app.post('/', async (c) => {
       valid,
       invalid,
       unknown
-    }
+    },
+    credits: "@saahiyo"
   })
 })
 
