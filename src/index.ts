@@ -49,7 +49,7 @@ app.post("/", async (c) => {
     )
   }
 
-  const unique = [...new Set(body.links.map(String))]
+  const unique = [...new Set(body.links.map(String))] as string[]
 
   const results = await Promise.all(
     unique.map(async (link) => ({
