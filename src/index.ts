@@ -6,57 +6,51 @@ export const config = {
 
 const app = new Hono()
 
-// --------------------------------------------------
-// Helper: Check a single Telegram link (HTTP only)
-// --------------------------------------------------
+// -----------------------------------------------
+// Helper to check a Telegram link
+// -----------------------------------------------
 async function checkLink(url: string): Promise<"VALID" | "INVALID"> {
   try {
-    const response = await fetch(url)
-    const html = await response.text()
+    const res = await fetch(url)
+    const html = await res.text()
 
-    // Main rule: tgme_page_title exists → VALID
     if (html.includes("tgme_page_title")) {
       return "VALID"
     }
     return "INVALID"
-  } catch (e) {
+  } catch {
     return "INVALID"
   }
 }
 
-// --------------------------------------------------
-// GET /?url=link
-// --------------------------------------------------
+// ------------------------------------------------
+// GET /?url=...
+// ------------------------------------------------
 app.get("/", async (c) => {
   const url = c.req.query("url")
 
-  if (!url) {
-    return c.json({ error: "Missing ?url=" })
-  }
+  if (!url) return c.json({ error: "Missing ?url=" })
 
   const status = await checkLink(url)
-
-  return c.json({
-    url,
-    status,
-  })
+  return c.json({ url, status })
 })
 
-// --------------------------------------------------
-// POST /
-// Body: { "links": ["url1", "url2", ...] }
-// --------------------------------------------------
+// ------------------------------------------------
+// POST /   { "links": ["...","..."] }
+// ------------------------------------------------
 app.post("/", async (c) => {
-  const body = await c.req.json()
+  const body = await c.req.json().catch(() => null)
 
-  if (!body?.links || !Array.isArray(body.links)) {
-    return c.json({ error: "Send JSON: { links: [ ... ] }" }, 400)
+  // Type guard
+  if (!body || !Array.isArray(body.links)) {
+    return c.json(
+      { error: "Send JSON: { links: [ ... ] }" },
+      400
+    )
   }
 
-  // Remove duplicates
-  const unique = [...new Set(body.links)]
+  const unique = [...new Set(body.links.map(String))]
 
-  // Check all links in parallel
   const results = await Promise.all(
     unique.map(async (link) => ({
       link,
@@ -64,7 +58,7 @@ app.post("/", async (c) => {
     }))
   )
 
-  // Sort: VALID first
+  // Sort valid first
   results.sort((a, b) => (a.status === "VALID" ? -1 : 1))
 
   return c.json({
