@@ -83,13 +83,17 @@ const httpCheck = async (url: string) => {
 
       // Determine type from extra text (e.g. "5 111 subscribers", "12 members", etc.)
       let type: string | null = null
-      let memberCount: string | null = null
+      let memberCount: number | null = null
+      let memberCountRaw: string | null = null
       if (extra) {
         if (extra.toLowerCase().includes('subscriber')) type = 'channel'
         else if (extra.toLowerCase().includes('member')) type = 'group'
         else if (extra.toLowerCase().includes('online')) type = 'group'
         else type = 'user'
-        memberCount = extra
+        memberCountRaw = extra
+        // Extract numeric value: "5 111 subscribers" → 5111
+        const digits = extra.replace(/[^\d]/g, '')
+        memberCount = digits ? parseInt(digits, 10) : null
       }
 
       return {
@@ -99,7 +103,8 @@ const httpCheck = async (url: string) => {
           description: description || null,
           photo: photo || null,
           type,
-          memberCount
+          memberCount,
+          memberCountRaw
         }
       }
     }
