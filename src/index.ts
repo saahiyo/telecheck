@@ -1,6 +1,26 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 
 const app = new Hono()
+
+// --------------------------------------------
+// CORS (Allow localhost development)
+// --------------------------------------------
+app.use(
+  '*',
+  cors({
+    origin: (origin) => {
+      if (!origin) return '*' // mobile apps / curl
+      if (origin.startsWith('http://localhost')) return origin
+      if (origin.startsWith('http://127.0.0.1')) return origin
+      return '*'  // fallback allow all
+    },
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type'],
+    maxAge: 86400,
+    credentials: false
+  })
+)
 
 // --------------------------------------------
 // GLOBAL STATS STORE (resets on each deployment)
