@@ -48,7 +48,23 @@ const normalize = (input: string) => {
 }
 
 // --------------------------------------------
-// TELEGRAM PAGE VALIDATION
+// HTML TEXT EXTRACTION HELPERS
+// --------------------------------------------
+const extractText = (html: string, className: string): string | null => {
+  const regex = new RegExp(`<div[^>]*class="[^"]*${className}[^"]*"[^>]*>([\\s\\S]*?)</div>`)
+  const match = html.match(regex)
+  if (!match) return null
+  return match[1].replace(/<[^>]+>/g, '').trim()
+}
+
+const extractImgSrc = (html: string, className: string): string | null => {
+  const regex = new RegExp(`<img[^>]*class="[^"]*${className}[^"]*"[^>]*src="([^"]+)"`)
+  const match = html.match(regex)
+  return match ? match[1] : null
+}
+
+// --------------------------------------------
+// TELEGRAM PAGE VALIDATION + METADATA
 // --------------------------------------------
 const httpCheck = async (url: string) => {
   try {
@@ -59,15 +75,42 @@ const httpCheck = async (url: string) => {
 
     if (html.includes("tgme_page_title")) {
       stats.valid++
-      return { status: "valid", reason: "Telegram page exists and is active" }
+
+      const title = extractText(html, 'tgme_page_title')
+      const description = extractText(html, 'tgme_page_description')
+      const extra = extractText(html, 'tgme_page_extra')
+      const photo = extractImgSrc(html, 'tgme_page_photo_image')
+
+      // Determine type from extra text (e.g. "5 111 subscribers", "12 members", etc.)
+      let type: string | null = null
+      let memberCount: string | null = null
+      if (extra) {
+        if (extra.toLowerCase().includes('subscriber')) type = 'channel'
+        else if (extra.toLowerCase().includes('member')) type = 'group'
+        else if (extra.toLowerCase().includes('online')) type = 'group'
+        else type = 'user'
+        memberCount = extra
+      }
+
+      return {
+        status: "valid",
+        reason: "Telegram page exists and is active",
+        metadata: {
+          title: title || null,
+          description: description || null,
+          photo: photo || null,
+          type,
+          memberCount
+        }
+      }
     }
 
     stats.invalid++
-    return { status: "invalid", reason: "Telegram page does not exist or is unavailable" }
+    return { status: "invalid", reason: "Telegram page does not exist or is unavailable", metadata: null }
 
   } catch (err: any) {
     stats.unknown++
-    return { status: "unknown", reason: err?.message || "Unexpected network error" }
+    return { status: "unknown", reason: err?.message || "Unexpected network error", metadata: null }
   }
 }
 
