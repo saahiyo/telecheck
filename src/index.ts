@@ -67,7 +67,6 @@ const extractImgSrc = (html: string, className: string): string | null => {
 // TELEGRAM PAGE VALIDATION + METADATA
 // --------------------------------------------
 const httpCheck = async (url: string) => {
-  const start = Date.now()
   try {
     const res = await fetch(url, { redirect: "follow" })
     const html = await res.text()
@@ -93,11 +92,8 @@ const httpCheck = async (url: string) => {
         memberCount = extra
       }
 
-      const responseTime = Date.now() - start
-
       return {
         status: "valid",
-        responseTime,
         metadata: {
           title: title || null,
           description: description || null,
@@ -109,13 +105,11 @@ const httpCheck = async (url: string) => {
     }
 
     stats.invalid++
-    const responseTime = Date.now() - start
-    return { status: "invalid", responseTime, metadata: null }
+    return { status: "invalid", metadata: null }
 
   } catch (err: any) {
     stats.unknown++
-    const responseTime = Date.now() - start
-    return { status: "unknown", responseTime, metadata: null }
+    return { status: "unknown", metadata: null }
   }
 }
 
@@ -123,6 +117,7 @@ const httpCheck = async (url: string) => {
 // ROOT: /?link=xxxx
 // --------------------------------------------
 app.get('/', async (c) => {
+  const start = Date.now()
   const link = c.req.query("link")
 
   if (!link) {
@@ -136,7 +131,8 @@ app.get('/', async (c) => {
         normalize: "/normalize?value=<input>",
         info: "/info"
       },
-      credits: "@saahiyo"
+      credits: "@saahiyo",
+      responseTime: Date.now() - start
     })
   }
 
@@ -147,7 +143,8 @@ app.get('/', async (c) => {
     input: link,
     normalized,
     ...result,
-    credits: "@saahiyo"
+    credits: "@saahiyo",
+    responseTime: Date.now() - start
   })
 })
 
@@ -155,6 +152,7 @@ app.get('/', async (c) => {
 // POST /  (Batch checker)
 // --------------------------------------------
 app.post('/', async (c) => {
+  const start = Date.now()
   let body: any = {}
 
   try {
@@ -185,7 +183,8 @@ app.post('/', async (c) => {
   return c.json({
     total: results.length,
     groups: { valid, invalid, unknown },
-    credits: "@saahiyo"
+    credits: "@saahiyo",
+    responseTime: Date.now() - start
   })
 })
 
