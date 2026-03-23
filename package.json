@@ -2,10 +2,11 @@
   "name": "hono",
   "type": "module",
   "dependencies": {
+    "@hono/node-server": "^1.19.11",
     "hono": "^4.10.7"
   },
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "tsx watch src/dev.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.17",
