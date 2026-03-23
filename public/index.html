@@ -3,140 +3,548 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Telegram Link Checker Dashboard</title>
-
+  <title>Telegram Link Checker</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
   <style>
+    :root {
+      color-scheme: dark;
+      --bg-color: #09090b;
+      --surface: #18181b;
+      --surface-hover: #27272a;
+      --border: #3f3f46;
+      --text-main: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      
+      --valid-bg: rgba(16, 185, 129, 0.1);
+      --valid-border: rgba(16, 185, 129, 0.2);
+      --valid-text: #34d399;
+      
+      --invalid-bg: rgba(239, 68, 68, 0.1);
+      --invalid-border: rgba(239, 68, 68, 0.2);
+      --invalid-text: #f87171;
+      
+      --unknown-bg: rgba(161, 161, 170, 0.1);
+      --unknown-border: rgba(161, 161, 170, 0.2);
+      --unknown-text: #a1a1aa;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: Arial, sans-serif;
-      background: #0f1117;
-      color: #fff;
-      margin: 0;
-      padding: 30px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
       display: flex;
       flex-direction: column;
       align-items: center;
+      min-height: 100vh;
+      padding: 3rem 1.5rem;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 680px;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
     }
 
     h1 {
-      margin-bottom: 10px;
-      font-size: 32px;
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+
+    .input-group {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      position: relative;
+    }
+
+    .input-group:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary), 0 10px 15px -3px rgba(0, 0, 0, 0.3);
     }
 
     textarea {
-      width: 90%;
-      max-width: 600px;
-      height: 130px;
-      padding: 12px;
-      background: #1c1f26;
-      color: #fff;
-      border: 1px solid #333;
-      border-radius: 8px;
-      font-size: 15px;
+      width: 100%;
+      min-height: 140px;
+      background: transparent;
+      color: var(--text-main);
+      border: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9rem;
+      resize: vertical;
       outline: none;
+      line-height: 1.6;
+    }
+
+    textarea::placeholder { color: #52525b; }
+
+    .input-error {
+      color: var(--invalid-text);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      display: none;
+      animation: fadeIn 0.2s;
+    }
+
+    .action-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+
+    .shortcut-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      opacity: 0.7;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    
+    .kbd {
+      background: #3f3f46;
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.7rem;
+      color: #e4e4e7;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.5rem;
     }
 
     button {
-      margin-top: 15px;
-      padding: 12px 22px;
-      background: #0070f3;
-      border: none;
+      background: var(--primary);
       color: white;
-      font-size: 16px;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
       cursor: pointer;
-      border-radius: 6px;
-      transition: 0.2s;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
-    button:hover {
-      background: #0059c9;
+    button:hover:not(:disabled) {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
     }
 
-    .results {
-      margin-top: 30px;
-      width: 90%;
-      max-width: 700px;
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+      box-shadow: none;
+    }
+
+    button:disabled {
+      background: #3f3f46;
+      color: #a1a1aa;
+      cursor: not-allowed;
+    }
+
+    button.btn-secondary {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    button.btn-secondary:hover:not(:disabled) {
+      background: var(--surface-hover);
+      color: var(--text-main);
+      box-shadow: none;
+      border-color: #52525b;
+    }
+
+    .loader {
+      display: none;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 0.8s ease-in-out infinite;
+    }
+
+    button:disabled .loader {
+      border-color: rgba(161, 161, 170, 0.3);
+      border-top-color: #a1a1aa;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Results section */
+    .results { margin-top: 2rem; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+
+    .results h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.25rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      color: var(--text-muted);
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.4rem 1rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover { background: var(--surface-hover); color: var(--text-main); }
+    .tab-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+
+    /* Cards */
+    .cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
 
     .card {
-      padding: 15px;
-      border-radius: 6px;
-      margin-bottom: 12px;
-      color: white;
+      padding: 1.25rem;
+      padding-right: 3rem;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      opacity: 0;
+      border: 1px solid transparent;
+      transform: translateY(10px);
+      position: relative;
     }
 
-    .valid { background: #046c4e; }
-    .invalid { background: #9b1d1d; }
-    .unknown { background: #6b7280; }
-
-    .loader {
-      margin-top: 20px;
-      font-size: 18px;
-      display: none;
+    .card strong {
+      font-weight: 500;
+      word-break: break-all;
+      font-size: 0.95rem;
     }
+
+    .card span {
+      font-size: 0.85rem;
+      font-weight: 500;
+      opacity: 0.9;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.05);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255,255,255,0.15);
+      color: var(--text-main);
+      transform: scale(1.05);
+      box-shadow: none;
+    }
+
+    .valid { background: var(--valid-bg); border-color: var(--valid-border); color: var(--valid-text); }
+    .invalid { background: var(--invalid-bg); border-color: var(--invalid-border); color: var(--invalid-text); }
+    .unknown { background: var(--unknown-bg); border-color: var(--unknown-border); color: var(--unknown-text); }
+
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--text-muted);
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 16px;
+    }
+
+    .error-state {
+      color: var(--invalid-text);
+      background: var(--invalid-bg);
+      border: 1px solid var(--invalid-border);
+      padding: 1rem;
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    /* Scrollbar customization */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #52525b;
+    }
+    
+    ::-webkit-resizer {
+      background-color: transparent;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
   </style>
 </head>
 
 <body>
 
-  <h1>Telegram Link Checker</h1>
-  <p>Enter one or more Telegram links/usernames (one per line):</p>
+  <div class="container">
+    <header>
+      <h1>Telegram Link Checker</h1>
+      <p class="subtitle">Verify usernames and invite links instantly in real-time.</p>
+    </header>
 
-  <textarea id="linksInput" placeholder="@durov&#10;https://t.me/example&#10;t.me/testchannel"></textarea>
+    <div class="input-group">
+      <textarea id="linksInput" placeholder="@durov&#10;https://t.me/example&#10;t.me/testchannel" spellcheck="false"></textarea>
+      
+      <div id="inputError" class="input-error">Please enter at least one link to verify.</div>
 
-  <button onclick="checkLinks()">Check Links</button>
+      <div class="action-row">
+        <div class="shortcut-hint">
+          <span class="kbd">Ctrl</span> + <span class="kbd">Enter</span>
+        </div>
+        
+        <div class="btn-group">
+          <button class="btn-secondary" onclick="clearInput()" id="clearBtn" title="Clear input">Clear</button>
+          <button id="checkBtn" onclick="checkLinks()">
+            <span id="btnText">Verify Links</span>
+            <div class="loader" id="loader"></div>
+          </button>
+        </div>
+      </div>
+    </div>
 
-  <div class="loader" id="loader">Checking links…</div>
-
-  <div class="results" id="results"></div>
+    <div class="results" id="results"></div>
+  </div>
 
   <script>
     const API_BASE = "https://telecheck.vercel.app";
 
+    // Support keyboard shortcut (Ctrl/Cmd + Enter)
+    document.getElementById('linksInput').addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        checkLinks();
+      }
+    });
+
+    function clearInput() {
+      const inputEl = document.getElementById('linksInput');
+      inputEl.value = '';
+      inputEl.focus();
+      document.getElementById('inputError').style.display = 'none';
+      document.getElementById('results').innerHTML = ''; // Optionally clear results on reset
+    }
+
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalHTML = btn.innerHTML;
+        // Checkmark icon
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        btn.style.color = "var(--valid-text)";
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.style.color = "";
+        }, 1500);
+      });
+    }
+
+    function filterResults(type) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById(`tab-${type}`).classList.add('active');
+      
+      const cards = document.querySelectorAll('.card');
+      cards.forEach(c => {
+        if (type === 'all') {
+          c.style.display = 'flex';
+          c.style.animation = 'none'; // reset animation to avoid glitch
+        } else {
+          if (c.classList.contains(type)) {
+            c.style.display = 'flex';
+          } else {
+            c.style.display = 'none';
+          }
+        }
+      });
+    }
+
     async function checkLinks() {
-      const input = document.getElementById("linksInput").value.trim();
+      const inputEl = document.getElementById("linksInput");
+      const input = inputEl.value.trim();
       const loader = document.getElementById("loader");
+      const btnText = document.getElementById("btnText");
+      const checkBtn = document.getElementById("checkBtn");
+      const clearBtn = document.getElementById("clearBtn");
       const resultsContainer = document.getElementById("results");
+      const inputError = document.getElementById("inputError");
 
-      if (!input) return alert("Please enter at least one link.");
-
+      if (!input) {
+        inputError.style.display = "block";
+        inputEl.focus();
+        return;
+      }
+      
+      inputError.style.display = "none";
+      checkBtn.disabled = true;
+      clearBtn.disabled = true;
+      btnText.textContent = "Checking...";
       loader.style.display = "block";
       resultsContainer.innerHTML = "";
 
       const links = input.split("\n").map(l => l.trim()).filter(Boolean);
 
-      // POST batch request
-      const res = await fetch(API_BASE + "/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ links })
-      });
+      try {
+        const res = await fetch(API_BASE + "/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ links })
+        });
 
-      const data = await res.json();
-      loader.style.display = "none";
+        const data = await res.json();
+        
+        if (!data.groups) {
+          throw new Error("Invalid API response structure");
+        }
 
-      if (!data.groups) {
-        resultsContainer.innerHTML = "<p>Error: Invalid API response</p>";
-        return;
+        const { valid, invalid, unknown } = data.groups;
+
+        // SVG string for the copy icon
+        const copySvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+
+        const buildCard = (item, cls, index) => `
+          <div class="card ${cls}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
+            <button class="copy-btn" onclick="copyToClipboard('${item.url}', this)" title="Copy link">
+               ${copySvg}
+            </button>
+            <strong>${item.url}</strong>
+            <span>${item.status.toUpperCase()}: ${item.reason}</span>
+          </div>
+        `;
+
+        let html = `
+          <div class="results-header">
+            <h2>Results</h2>
+            <span class="badge">${data.total} checked</span>
+          </div>
+        `;
+        
+        if (data.total === 0) {
+           html += `<div class="empty-state">No links found to check or format was unrecognized.</div>`;
+        } else {
+           html += `
+            <div class="tabs">
+              <button class="tab-btn active" id="tab-all" onclick="filterResults('all')">All (${data.total})</button>
+              <button class="tab-btn" id="tab-valid" onclick="filterResults('valid')">Valid (${valid.length})</button>
+              <button class="tab-btn" id="tab-invalid" onclick="filterResults('invalid')">Invalid (${invalid.length})</button>
+              <button class="tab-btn" id="tab-unknown" onclick="filterResults('unknown')">Unknown (${unknown.length})</button>
+            </div>
+            <div class="cards-container">
+           `;
+           
+           let index = 0;
+           html += valid.map(v => buildCard(v, "valid", ++index)).join("");
+           html += invalid.map(v => buildCard(v, "invalid", ++index)).join("");
+           html += unknown.map(v => buildCard(v, "unknown", ++index)).join("");
+           
+           html += `</div>`;
+        }
+
+        resultsContainer.innerHTML = html;
+
+      } catch (err) {
+        resultsContainer.innerHTML = `<div class="error-state">Failed to check links. Please try again later.</div>`;
+        console.error(err);
+      } finally {
+        checkBtn.disabled = false;
+        clearBtn.disabled = false;
+        btnText.textContent = "Verify Links";
+        loader.style.display = "none";
       }
-
-      const { valid, invalid, unknown } = data.groups;
-
-      // Helper to make cards
-      const buildCard = (item, cls) => `
-        <div class="card ${cls}">
-          <strong>${item.url}</strong><br>
-          <span>${item.status.toUpperCase()}: ${item.reason}</span>
-        </div>
-      `;
-
-      // Render all results
-      resultsContainer.innerHTML = `
-        <h2>Results (${data.total})</h2>
-
-        ${valid.map(v => buildCard(v, "valid")).join("")}
-        ${invalid.map(v => buildCard(v, "invalid")).join("")}
-        ${unknown.map(v => buildCard(v, "unknown")).join("")}
-      `;
     }
   </script>
 
