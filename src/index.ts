@@ -67,6 +67,7 @@ const extractImgSrc = (html: string, className: string): string | null => {
 // TELEGRAM PAGE VALIDATION + METADATA
 // --------------------------------------------
 const httpCheck = async (url: string) => {
+  const start = Date.now()
   try {
     const res = await fetch(url, { redirect: "follow" })
     const html = await res.text()
@@ -92,8 +93,11 @@ const httpCheck = async (url: string) => {
         memberCount = extra
       }
 
+      const responseTime = Date.now() - start
+
       return {
         status: "valid",
+        responseTime,
         metadata: {
           title: title || null,
           description: description || null,
@@ -105,11 +109,13 @@ const httpCheck = async (url: string) => {
     }
 
     stats.invalid++
-    return { status: "invalid", metadata: null }
+    const responseTime = Date.now() - start
+    return { status: "invalid", responseTime, metadata: null }
 
   } catch (err: any) {
     stats.unknown++
-    return { status: "unknown", metadata: null }
+    const responseTime = Date.now() - start
+    return { status: "unknown", responseTime, metadata: null }
   }
 }
 
