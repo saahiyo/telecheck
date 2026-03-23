@@ -30,7 +30,29 @@ const stats = {
   totalChecks: 0,
   valid: 0,
   invalid: 0,
-  unknown: 0
+  unknown: 0,
+  cacheHits: 0,
+  cacheMisses: 0
+}
+
+// --------------------------------------------
+// IN-MEMORY CACHE (5 min TTL)
+// --------------------------------------------
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const cache = new Map<string, { data: any; expiresAt: number }>()
+
+const getCached = (key: string) => {
+  const entry = cache.get(key)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key)
+    return null
+  }
+  return entry.data
+}
+
+const setCache = (key: string, data: any) => {
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL })
 }
 
 // --------------------------------------------
@@ -67,6 +89,14 @@ const extractImgSrc = (html: string, className: string): string | null => {
 // TELEGRAM PAGE VALIDATION + METADATA
 // --------------------------------------------
 const httpCheck = async (url: string) => {
+  // Check cache first
+  const cached = getCached(url)
+  if (cached) {
+    stats.cacheHits++
+    return { ...cached, cached: true }
+  }
+  stats.cacheMisses++
+
   try {
     const res = await fetch(url, { redirect: "follow" })
     const html = await res.text()
@@ -96,7 +126,7 @@ const httpCheck = async (url: string) => {
         memberCount = digits ? parseInt(digits, 10) : null
       }
 
-      return {
+      const result = {
         status: "valid",
         metadata: {
           title: title || null,
@@ -107,14 +137,19 @@ const httpCheck = async (url: string) => {
           memberCountRaw
         }
       }
+      setCache(url, result)
+      return { ...result, cached: false }
     }
 
     stats.invalid++
-    return { status: "invalid", metadata: null }
+    const result = { status: "invalid", metadata: null }
+    setCache(url, result)
+    return { ...result, cached: false }
 
   } catch (err: any) {
     stats.unknown++
-    return { status: "unknown", metadata: null }
+    // Don't cache errors so they get retried
+    return { status: "unknown", metadata: null, cached: false }
   }
 }
 
@@ -234,7 +269,8 @@ app.get('/normalize', (c) => {
 app.get('/stats', (c) => {
   return c.json({
     uptime_ms: Date.now() - stats.startedAt,
-    ...stats
+    ...stats,
+    cacheSize: cache.size
   })
 })
 
