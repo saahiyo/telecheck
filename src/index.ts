@@ -94,7 +94,6 @@ const httpCheck = async (url: string) => {
 
       return {
         status: "valid",
-        reason: "Telegram page exists and is active",
         metadata: {
           title: title || null,
           description: description || null,
@@ -106,11 +105,11 @@ const httpCheck = async (url: string) => {
     }
 
     stats.invalid++
-    return { status: "invalid", reason: "Telegram page does not exist or is unavailable", metadata: null }
+    return { status: "invalid", metadata: null }
 
   } catch (err: any) {
     stats.unknown++
-    return { status: "unknown", reason: err?.message || "Unexpected network error", metadata: null }
+    return { status: "unknown", metadata: null }
   }
 }
 
