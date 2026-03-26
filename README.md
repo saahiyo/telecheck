@@ -1,40 +1,38 @@
-# 🚀 Telegram Link Checker API
+# 🚀 TeleCheck: Multi-Platform Link Validator API
 
-A fast, lightweight **Telegram link validator API** built with **Hono**, deployed on **Vercel Edge Runtime**.
+A fast, lightweight link validator API for **Telegram** and **MEGA**, built with **Hono** and powered by **Neon Database**.
 
 Live API:  
 👉 **https://telecheck.vercel.app/**
-
-This API checks whether a Telegram username, group, channel, or invite link **actually exists** — using Telegram’s public HTML signature instead of Telegram API credentials.
 
 ---
 
 ## 🔥 Features
 
-- 🟢 No Telegram API credentials needed
-- ⚡ Ultra-fast parallel checks via Promise.all()
-- 🧹 Input normalization:
+- 🟢 **No API credentials needed** — uses public HTML signatures.
+- 📂 **Multi-Platform Support**: Validate Telegram (users, groups, channels, bots) and MEGA (files, folders) links.
+- ⚡ **Ultra-fast Parallel Checks** via `Promise.all()`.
+- 💾 **Database Persistence** — automatically saves valid links to a Neon (PostgreSQL) database.
+- 🧹 **Input Normalization**:
   - `@username` → `https://t.me/username`
   - `username123` → `https://t.me/username123`
-- 🔍 Accurate validation using Telegram HTML metadata
-- 📦 Batch validation (POST)
-- 🗂 Grouped output: valid / invalid / unknown
-- ⚙️ Single endpoint `/` for everything
-- 🪶 Edge-optimized for lowest latency
-- 🖥️ **Built-in Frontend Dashboard** for easy manual checking
+- 🔍 **Rich Metadata Extraction**:
+  - **Telegram**: Title, description, photo, member count, and type (channel/group/user).
+  - **MEGA**: File/folder name, description, and status (valid/expired).
+- 📦 **Batch Validation** (POST).
+- ⚙️ **In-Memory Caching** (5 min TTL) for repeated queries.
+- 📊 **Usage Stats** & Global history endpoints.
 
 ---
 
 ## 📡 Endpoints
 
 ### ✅ 1. **Single Link Check** (GET)
+Check a single link or Telegram username.
 
 ```http
-GET https://telecheck.vercel.app/?link=<telegram_link_or_username>
+GET https://telecheck.vercel.app/?link=@durov
 ```
-
-**Example:**
-`https://telecheck.vercel.app/?link=@durov`
 
 **Response:**
 ```json
@@ -42,14 +40,24 @@ GET https://telecheck.vercel.app/?link=<telegram_link_or_username>
   "input": "@durov",
   "normalized": "https://t.me/durov",
   "status": "valid",
-  "reason": "Telegram page exists and is active",
-  "credits": "@saahiyo"
+  "platform": "telegram",
+  "metadata": {
+    "title": "Pavel Durov",
+    "description": "Founder of Telegram...",
+    "photo": "https://...",
+    "type": "user",
+    "memberCount": null
+  },
+  "cached": false,
+  "credits": "@saahiyo",
+  "responseTime": 150
 }
 ```
 
 ---
 
-### ✅ 2. **Multiple Links Check** (POST)
+### ✅ 2. **Batch Link Check** (POST)
+Validate multiple links at once.
 
 ```http
 POST https://telecheck.vercel.app/
@@ -60,143 +68,88 @@ Content-Type: application/json
 ```json
 {
   "links": [
-    "@durov",
-    "t.me/example",
-    "https://t.me/notfound12345"
+    "@shakir",
+    "https://mega.nz/file/xxxx",
+    "https://t.me/invalid_user_123"
   ]
 }
 ```
 
-**Response:**
-```json
-{
-  "total": 3,
-  "groups": {
-    "valid": [
-      { "url": "https://t.me/durov", "status": "valid", "reason": "..." }
-    ],
-    "invalid": [
-      { "url": "https://t.me/notfound12345", "status": "invalid", "reason": "..." }
-    ],
-    "unknown": []
-  },
-  "credits": "@saahiyo"
-}
-```
-
 ---
 
-### ℹ️ 3. **API Info** (GET)
-
-Returns metadata about the API.
+### 🗄️ 3. **Query Stored Links** (GET)
+Retrieve recently validated links saved in the database.
 
 ```http
-GET https://telecheck.vercel.app/info
+GET https://telecheck.vercel.app/links?platform=telegram&limit=10
 ```
+
+- `platform`: `telegram` or `mega` (optional)
+- `limit`: Default 50
+- `offset`: For pagination
 
 ---
 
-### 🏥 4. **Health Check** (GET)
-
-Returns the API status and uptime.
-
-```http
-GET https://telecheck.vercel.app/health
-```
+### 📊 4. **API & DB Stats** (GET)
+- `/stats`: Runtime metrics (uptime, cache hits, memory stats).
+- `/links/stats`: Database counts per platform.
 
 ---
 
-### 📊 5. **Global Stats** (GET)
-
-Returns usage statistics for the current deployment instance (resets on redeploy).
-
-```http
-GET https://telecheck.vercel.app/stats
-```
-
----
-
-### 🧹 6. **Normalize Link** (GET)
-
-Test the normalization logic without performing a check.
-
-```http
-GET https://telecheck.vercel.app/normalize?value=@username
-```
-
----
-
-## 🖥️ Frontend Dashboard
-
-The project includes a simple HTML frontend for manual testing.
-Access it by visiting the root URL in a browser:
-
-👉 **https://telecheck.vercel.app/**
-
-Located in `public/index.html`.
+### ℹ️ 5. **Utilities** (GET)
+- `/health`: API health check.
+- `/info`: API version and supported features.
+- `/normalize?value=@user`: Test the normalization logic without a fetch check.
 
 ---
 
 ## 🧠 How It Works
 
-Telegram shows a public preview for every valid user/channel/group.  
-If a Telegram entity exists, the HTML includes `tgme_page_title`.
-
-**Validation logic:**
-- Contains `tgme_page_title` → **VALID**
-- Does not contain it → **INVALID**
-- Network failure → **UNKNOWN**
-
-This avoids Telegram API credentials and works for Users, Channels, Groups, Bots, and Invite links.
+- **Telegram**: Detects validity via the presence of `tgme_page_title` in the public web preview.
+- **MEGA**: Inspects Open Graph (OG) tags and metadata to distinguish between active content and generic "File not found" placeholders.
 
 ---
 
 ## 📁 Project Structure
 
-```
+```text
 src/
-  └── index.ts       # Main API logic (Hono)
+  ├── index.ts       # Main API router & check logic
+  ├── db.ts          # Neon DB (PostgreSQL) operations
+  └── dev.ts         # Local development entry point
 public/
   └── index.html     # Frontend Dashboard
 package.json         # Dependencies & Scripts
-README.md            # Documentation
 ```
-
----
-
-## 📊 Status Meanings
-
-| Status     | Meaning |
-|------------|---------|
-| **valid**   | Telegram page exists and is active |
-| **invalid** | Page does not exist or unavailable |
-| **unknown** | Network/timeout/other error |
 
 ---
 
 ## 🛠 Local Development
 
-1. **Install dependencies:**
+1. **Clone the repo.**
+2. **Install dependencies:**
    ```bash
    npm install
    ```
-
-2. **Run locally:**
+3. **Configure Environment:**
+   Create a `.env.local` file with:
+   ```env
+   POSTGRES_URL=your_neon_db_url
+   ```
+4. **Run development server:**
    ```bash
    npm run dev
    ```
-   This runs `vercel dev` to simulate the Edge environment.
-
-3. **Open in browser:**
-   - API: `http://localhost:3000`
-   - Dashboard: `http://localhost:3000` (served from `public/`)
 
 ---
 
-## 🔧 Deploy on Your Own Vercel Account
+## 🔧 Deployment
 
-Just import your GitHub repo into Vercel — it detects Hono automatically.  
-No environment variables required.
+The project is optimized for **Vercel Edge Runtime**. 
+
+1. Push to GitHub.
+2. Link project to Vercel.
+3. Add `POSTGRES_URL` to Vercel environment variables.
 
 ---
 
@@ -208,5 +161,5 @@ MIT — free for personal and commercial use.
 
 ## 👨‍💻 Author
 
-Telegram Link Checker built by **Shakir**  
-Live API: https://telecheck.vercel.app/
+Built by **[@saahiyo](https://github.com/saahiyo)**.  
+Telegram: **@saahiyo**
