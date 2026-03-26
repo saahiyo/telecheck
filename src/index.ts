@@ -56,6 +56,23 @@ const setCache = (key: string, data: any) => {
 }
 
 // --------------------------------------------
+// PLATFORM DETECTION
+// --------------------------------------------
+type Platform = 'telegram' | 'mega' | 'unknown'
+
+const detectPlatform = (url: string): Platform => {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    if (host === 't.me' || host === 'telegram.me' || host === 'telegram.org') return 'telegram'
+    if (host === 'mega.nz' || host === 'mega.co.nz') return 'mega'
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+// --------------------------------------------
 // NORMALIZE FUNCTION
 // --------------------------------------------
 const normalize = (input: string) => {
@@ -86,7 +103,139 @@ const extractImgSrc = (html: string, className: string): string | null => {
 }
 
 // --------------------------------------------
+// GENERIC META TAG EXTRACTION (for non-Telegram)
+// --------------------------------------------
+const extractMeta = (html: string, property: string): string | null => {
+  // Try og: and regular meta tags
+  const ogRegex = new RegExp(`<meta[^>]*property="${property}"[^>]*content="([^"]*)"`, 'i')
+  const ogMatch = html.match(ogRegex)
+  if (ogMatch) return ogMatch[1]
+
+  const nameRegex = new RegExp(`<meta[^>]*name="${property}"[^>]*content="([^"]*)"`, 'i')
+  const nameMatch = html.match(nameRegex)
+  if (nameMatch) return nameMatch[1]
+
+  return null
+}
+
+const extractPageTitle = (html: string): string | null => {
+  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i)
+  return match ? match[1].trim() : null
+}
+
+// --------------------------------------------
 // TELEGRAM PAGE VALIDATION + METADATA
+// --------------------------------------------
+const telegramCheck = async (url: string, html: string) => {
+  if (html.includes("tgme_page_title")) {
+    stats.valid++
+
+    const title = extractText(html, 'tgme_page_title')
+    const description = extractText(html, 'tgme_page_description')
+    const extra = extractText(html, 'tgme_page_extra')
+    const photo = extractImgSrc(html, 'tgme_page_photo_image')
+
+    // Determine type from extra text (e.g. "5 111 subscribers", "12 members", etc.)
+    let type: string | null = null
+    let memberCount: number | null = null
+    let memberCountRaw: string | null = null
+    if (extra) {
+      if (extra.toLowerCase().includes('subscriber')) type = 'channel'
+      else if (extra.toLowerCase().includes('member')) type = 'group'
+      else if (extra.toLowerCase().includes('online')) type = 'group'
+      else type = 'user'
+      memberCountRaw = extra
+      const digits = extra.replace(/[^\d]/g, '')
+      memberCount = digits ? parseInt(digits, 10) : null
+    }
+
+    return {
+      status: "valid",
+      platform: "telegram" as const,
+      metadata: {
+        title: title || null,
+        description: description || null,
+        photo: photo || null,
+        type,
+        memberCount,
+        memberCountRaw
+      }
+    }
+  }
+
+  stats.invalid++
+  return { status: "invalid", platform: "telegram" as const, metadata: null }
+}
+
+// --------------------------------------------
+// MEGA PAGE VALIDATION + METADATA
+// --------------------------------------------
+const megaCheck = async (url: string, html: string, httpStatus: number) => {
+  const title = extractMeta(html, 'og:title') || extractPageTitle(html)
+  const description = extractMeta(html, 'og:description') || extractMeta(html, 'description')
+  const image = extractMeta(html, 'og:image')
+  const siteName = extractMeta(html, 'og:site_name')
+
+  // Detect MEGA link type from URL path
+  let type: string | null = null
+  try {
+    const u = new URL(url)
+    const path = u.pathname.toLowerCase()
+    if (path.startsWith('/folder')) type = 'folder'
+    else if (path.startsWith('/file')) type = 'file'
+    else if (path.startsWith('/chat')) type = 'chat'
+    else type = 'unknown'
+  } catch {}
+
+  // If we got a title or meaningful meta, treat as valid
+  if (title || httpStatus === 200) {
+    stats.valid++
+    return {
+      status: "valid",
+      platform: "mega" as const,
+      metadata: {
+        title: title || null,
+        description: description || null,
+        image: image || null,
+        siteName: siteName || null,
+        type
+      }
+    }
+  }
+
+  stats.invalid++
+  return { status: "invalid", platform: "mega" as const, metadata: null }
+}
+
+// --------------------------------------------
+// GENERIC CHECK (fallback for unknown platforms)
+// --------------------------------------------
+const genericCheck = async (url: string, html: string, httpStatus: number) => {
+  const title = extractMeta(html, 'og:title') || extractPageTitle(html)
+  const description = extractMeta(html, 'og:description') || extractMeta(html, 'description')
+  const image = extractMeta(html, 'og:image')
+  const siteName = extractMeta(html, 'og:site_name')
+
+  if (title || httpStatus === 200) {
+    stats.valid++
+    return {
+      status: "valid",
+      platform: "unknown" as const,
+      metadata: {
+        title: title || null,
+        description: description || null,
+        image: image || null,
+        siteName: siteName || null
+      }
+    }
+  }
+
+  stats.invalid++
+  return { status: "invalid", platform: "unknown" as const, metadata: null }
+}
+
+// --------------------------------------------
+// MAIN CHECK ROUTER
 // --------------------------------------------
 const httpCheck = async (url: string) => {
   // Check cache first
@@ -100,56 +249,29 @@ const httpCheck = async (url: string) => {
   try {
     const res = await fetch(url, { redirect: "follow" })
     const html = await res.text()
+    const platform = detectPlatform(url)
 
     stats.totalChecks++
 
-    if (html.includes("tgme_page_title")) {
-      stats.valid++
-
-      const title = extractText(html, 'tgme_page_title')
-      const description = extractText(html, 'tgme_page_description')
-      const extra = extractText(html, 'tgme_page_extra')
-      const photo = extractImgSrc(html, 'tgme_page_photo_image')
-
-      // Determine type from extra text (e.g. "5 111 subscribers", "12 members", etc.)
-      let type: string | null = null
-      let memberCount: number | null = null
-      let memberCountRaw: string | null = null
-      if (extra) {
-        if (extra.toLowerCase().includes('subscriber')) type = 'channel'
-        else if (extra.toLowerCase().includes('member')) type = 'group'
-        else if (extra.toLowerCase().includes('online')) type = 'group'
-        else type = 'user'
-        memberCountRaw = extra
-        // Extract numeric value: "5 111 subscribers" → 5111
-        const digits = extra.replace(/[^\d]/g, '')
-        memberCount = digits ? parseInt(digits, 10) : null
-      }
-
-      const result = {
-        status: "valid",
-        metadata: {
-          title: title || null,
-          description: description || null,
-          photo: photo || null,
-          type,
-          memberCount,
-          memberCountRaw
-        }
-      }
-      setCache(url, result)
-      return { ...result, cached: false }
+    let result
+    switch (platform) {
+      case 'telegram':
+        result = await telegramCheck(url, html)
+        break
+      case 'mega':
+        result = await megaCheck(url, html, res.status)
+        break
+      default:
+        result = await genericCheck(url, html, res.status)
+        break
     }
 
-    stats.invalid++
-    const result = { status: "invalid", metadata: null }
     setCache(url, result)
     return { ...result, cached: false }
 
   } catch (err: any) {
     stats.unknown++
-    // Don't cache errors so they get retried
-    return { status: "unknown", metadata: null, cached: false }
+    return { status: "unknown", platform: detectPlatform(url), metadata: null, cached: false }
   }
 }
 
@@ -162,9 +284,10 @@ app.get('/', async (c) => {
 
   if (!link) {
     return c.json({
-      api: "Telegram Link Checker API",
+      api: "Link Checker API",
+      supported: ["telegram", "mega"],
       endpoints: {
-        single: "/?link=<telegram_link>",
+        single: "/?link=<link>",
         multiple: "POST / → { links: [] }",
         health: "/health",
         stats: "/stats",
@@ -240,8 +363,9 @@ app.get('/health', (c) => {
 // API INFO
 app.get('/info', (c) => {
   return c.json({
-    name: "Telegram Link Checker API",
-    version: "1.0.0",
+    name: "Link Checker API",
+    version: "2.0.0",
+    supported: ["telegram", "mega"],
     runtime: "Vercel Edge",
     author: "@saahiyo",
     endpoints: {
