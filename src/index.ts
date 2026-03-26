@@ -187,7 +187,26 @@ const megaCheck = async (url: string, html: string, httpStatus: number) => {
     else type = 'unknown'
   } catch {}
 
-  // If we got a title or meaningful meta, treat as valid
+  // Detect expired/dead MEGA links — generic placeholder title + no description
+  const genericTitles = ['file folder on mega', 'file on mega', 'folder on mega']
+  const isExpired = title && genericTitles.includes(title.toLowerCase()) && !description
+
+  if (isExpired) {
+    stats.invalid++
+    return {
+      status: "expired",
+      platform: "mega" as const,
+      metadata: {
+        title: title || null,
+        description: null,
+        image: image || null,
+        siteName: siteName || null,
+        type
+      }
+    }
+  }
+
+  // If we got a meaningful title, treat as valid
   if (title || httpStatus === 200) {
     stats.valid++
     return {
