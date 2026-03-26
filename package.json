@@ -3,6 +3,8 @@
   "type": "module",
   "dependencies": {
     "@hono/node-server": "^1.19.11",
+    "@neondatabase/serverless": "^1.0.2",
+    "dotenv": "^17.3.1",
     "hono": "^4.10.7"
   },
   "scripts": {

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { saveLink, getLinks, getLinkByUrl, getLinkCount } from './db.js'
 
 const app = new Hono()
 
@@ -285,6 +286,11 @@ const httpCheck = async (url: string) => {
         break
     }
 
+    // Save valid links to database (fire & forget)
+    if (result.status === 'valid') {
+      saveLink(url, result.platform, result.status, result.metadata).catch(() => {})
+    }
+
     setCache(url, result)
     return { ...result, cached: false }
 
@@ -308,6 +314,8 @@ app.get('/', async (c) => {
       endpoints: {
         single: "/?link=<link>",
         multiple: "POST / → { links: [] }",
+        links: "/links?platform=<platform>&limit=<n>",
+        linksStats: "/links/stats",
         health: "/health",
         stats: "/stats",
         normalize: "/normalize?value=<input>",
@@ -390,6 +398,8 @@ app.get('/info', (c) => {
     endpoints: {
       singleCheck: "/?link=<value>",
       batchCheck: "POST / → { links: [] }",
+      storedLinks: "/links?platform=<platform>&limit=<n>",
+      linksStats: "/links/stats",
       health: "/health",
       stats: "/stats",
       normalize: "/normalize?value=<input>"
@@ -415,6 +425,42 @@ app.get('/stats', (c) => {
     ...stats,
     cacheSize: cache.size
   })
+})
+
+// --------------------------------------------
+// STORED LINKS
+// --------------------------------------------
+app.get('/links', async (c) => {
+  try {
+    const platform = c.req.query('platform')
+    const limit = parseInt(c.req.query('limit') || '50', 10)
+    const offset = parseInt(c.req.query('offset') || '0', 10)
+
+    const links = await getLinks(platform || undefined, limit, offset)
+    const total = await getLinkCount(platform || undefined)
+
+    return c.json({
+      total,
+      limit,
+      offset,
+      links
+    })
+  } catch (err: any) {
+    return c.json({ error: 'Database error', message: err.message }, 500)
+  }
+})
+
+// STORED LINKS STATS
+app.get('/links/stats', async (c) => {
+  try {
+    const total = await getLinkCount()
+    const telegram = await getLinkCount('telegram')
+    const mega = await getLinkCount('mega')
+
+    return c.json({ total, telegram, mega })
+  } catch (err: any) {
+    return c.json({ error: 'Database error', message: err.message }, 500)
+  }
 })
 
 export default app
