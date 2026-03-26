@@ -24,6 +24,27 @@ app.use(
 )
 
 // --------------------------------------------
+// CENTRALIZED ERROR HANDLER
+// --------------------------------------------
+app.onError((err, c) => {
+  console.error(`[ERROR] ${c.req.method} ${c.req.url}:`, err.message)
+  return c.json({
+    error: err.message || 'Internal Server Error',
+    path: c.req.path,
+    timestamp: new Date().toISOString()
+  }, 500)
+})
+
+// 404 handler
+app.notFound((c) => {
+  return c.json({
+    error: 'Not Found',
+    path: c.req.path,
+    availableEndpoints: ['/', '/links', '/links/stats', '/health', '/info', '/stats', '/normalize']
+  }, 404)
+})
+
+// --------------------------------------------
 // GLOBAL STATS STORE (resets on each deployment)
 // --------------------------------------------
 const stats = {
@@ -431,36 +452,28 @@ app.get('/stats', (c) => {
 // STORED LINKS
 // --------------------------------------------
 app.get('/links', async (c) => {
-  try {
-    const platform = c.req.query('platform')
-    const limit = parseInt(c.req.query('limit') || '50', 10)
-    const offset = parseInt(c.req.query('offset') || '0', 10)
+  const platform = c.req.query('platform')
+  const limit = parseInt(c.req.query('limit') || '50', 10)
+  const offset = parseInt(c.req.query('offset') || '0', 10)
 
-    const links = await getLinks(platform || undefined, limit, offset)
-    const total = await getLinkCount(platform || undefined)
+  const links = await getLinks(platform || undefined, limit, offset)
+  const total = await getLinkCount(platform || undefined)
 
-    return c.json({
-      total,
-      limit,
-      offset,
-      links
-    })
-  } catch (err: any) {
-    return c.json({ error: 'Database error', message: err.message }, 500)
-  }
+  return c.json({
+    total,
+    limit,
+    offset,
+    links
+  })
 })
 
 // STORED LINKS STATS
 app.get('/links/stats', async (c) => {
-  try {
-    const total = await getLinkCount()
-    const telegram = await getLinkCount('telegram')
-    const mega = await getLinkCount('mega')
+  const total = await getLinkCount()
+  const telegram = await getLinkCount('telegram')
+  const mega = await getLinkCount('mega')
 
-    return c.json({ total, telegram, mega })
-  } catch (err: any) {
-    return c.json({ error: 'Database error', message: err.message }, 500)
-  }
+  return c.json({ total, telegram, mega })
 })
 
 export default app
