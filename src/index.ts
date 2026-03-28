@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkByUrl, getLinkCount } from './db.js'
+import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats } from './db.js'
 
 const app = new Hono()
 
@@ -45,17 +45,9 @@ app.notFound((c) => {
 })
 
 // --------------------------------------------
-// GLOBAL STATS STORE (resets on each deployment)
+// UPTIME TRACKER (in-memory only — resets on restart)
 // --------------------------------------------
-const stats = {
-  startedAt: Date.now(),
-  totalChecks: 0,
-  valid: 0,
-  invalid: 0,
-  unknown: 0,
-  cacheHits: 0,
-  cacheMisses: 0
-}
+const startedAt = Date.now()
 
 // --------------------------------------------
 // IN-MEMORY CACHE (5 min TTL)
@@ -150,7 +142,7 @@ const extractPageTitle = (html: string): string | null => {
 // --------------------------------------------
 const telegramCheck = async (url: string, html: string) => {
   if (html.includes("tgme_page_title")) {
-    stats.valid++
+    incrementStat('valid').catch(() => {})
 
     const title = extractText(html, 'tgme_page_title')
     const description = extractText(html, 'tgme_page_description')
@@ -185,7 +177,7 @@ const telegramCheck = async (url: string, html: string) => {
     }
   }
 
-  stats.invalid++
+  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "telegram" as const, metadata: null }
 }
 
@@ -214,7 +206,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number) => {
   const isExpired = title && genericTitles.includes(title.toLowerCase()) && !description
 
   if (isExpired) {
-    stats.invalid++
+    incrementStat('invalid').catch(() => {})
     return {
       status: "expired",
       platform: "mega" as const,
@@ -230,7 +222,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number) => {
 
   // If we got a meaningful title, treat as valid
   if (title || httpStatus === 200) {
-    stats.valid++
+    incrementStat('valid').catch(() => {})
     return {
       status: "valid",
       platform: "mega" as const,
@@ -244,7 +236,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number) => {
     }
   }
 
-  stats.invalid++
+  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "mega" as const, metadata: null }
 }
 
@@ -258,7 +250,7 @@ const genericCheck = async (url: string, html: string, httpStatus: number) => {
   const siteName = extractMeta(html, 'og:site_name')
 
   if (title || httpStatus === 200) {
-    stats.valid++
+    incrementStat('valid').catch(() => {})
     return {
       status: "valid",
       platform: "unknown" as const,
@@ -271,7 +263,7 @@ const genericCheck = async (url: string, html: string, httpStatus: number) => {
     }
   }
 
-  stats.invalid++
+  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "unknown" as const, metadata: null }
 }
 
@@ -282,17 +274,17 @@ const httpCheck = async (url: string) => {
   // Check cache first
   const cached = getCached(url)
   if (cached) {
-    stats.cacheHits++
+    incrementStat('cacheHits').catch(() => {})
     return { ...cached, cached: true }
   }
-  stats.cacheMisses++
+  incrementStat('cacheMisses').catch(() => {})
 
   try {
     const res = await fetch(url, { redirect: "follow" })
     const html = await res.text()
     const platform = detectPlatform(url)
 
-    stats.totalChecks++
+    incrementStat('totalChecks').catch(() => {})
 
     let result
     switch (platform) {
@@ -316,7 +308,7 @@ const httpCheck = async (url: string) => {
     return { ...result, cached: false }
 
   } catch (err: any) {
-    stats.unknown++
+    incrementStat('unknown').catch(() => {})
     return { status: "unknown", platform: detectPlatform(url), metadata: null, cached: false }
   }
 }
@@ -405,7 +397,7 @@ app.post('/', async (c) => {
 
 // HEALTH CHECK
 app.get('/health', (c) => {
-  return c.json({ status: "ok", uptime_ms: Date.now() - stats.startedAt })
+  return c.json({ status: "ok", uptime_ms: Date.now() - startedAt })
 })
 
 // API INFO
@@ -439,11 +431,12 @@ app.get('/normalize', (c) => {
   })
 })
 
-// GLOBAL STATS
-app.get('/stats', (c) => {
+// GLOBAL STATS (reads from DB — persistent across restarts & deployments)
+app.get('/stats', async (c) => {
+  const dbStats = await getStats()
   return c.json({
-    uptime_ms: Date.now() - stats.startedAt,
-    ...stats,
+    uptime_ms: Date.now() - startedAt,
+    ...dbStats,
     cacheSize: cache.size
   })
 })

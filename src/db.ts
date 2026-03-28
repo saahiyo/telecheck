@@ -26,7 +26,14 @@ export const initDB = async () => {
       checked_at TIMESTAMP DEFAULT NOW()
     )
   `
-  console.log('✅ Database initialized — links table ready')
+  await sql`
+    CREATE TABLE IF NOT EXISTS stats (
+      key TEXT PRIMARY KEY,
+      value BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `
+  console.log('✅ Database initialized — links + stats tables ready')
 }
 
 // --------------------------------------------
@@ -101,4 +108,31 @@ export const getLinkCount = async (platform?: string) => {
   }
   const rows = await sql`SELECT COUNT(*) as count FROM links`
   return parseInt(rows[0].count as string, 10)
+}
+
+// --------------------------------------------
+// STATS: Increment a stat counter
+// --------------------------------------------
+export const incrementStat = async (key: string, amount = 1) => {
+  const sql = getDb()
+  await sql`
+    INSERT INTO stats (key, value, updated_at)
+    VALUES (${key}, ${amount}, NOW())
+    ON CONFLICT (key) DO UPDATE SET
+      value = stats.value + ${amount},
+      updated_at = NOW()
+  `
+}
+
+// --------------------------------------------
+// STATS: Get all stats as a flat object
+// --------------------------------------------
+export const getStats = async (): Promise<Record<string, number>> => {
+  const sql = getDb()
+  const rows = await sql`SELECT key, value FROM stats`
+  const result: Record<string, number> = {}
+  for (const row of rows) {
+    result[row.key as string] = parseInt(row.value as string, 10)
+  }
+  return result
 }
