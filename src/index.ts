@@ -1,8 +1,93 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats, deleteLinks } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, deleteLinks } from './db.js'
 
 const app = new Hono()
+
+type Platform = 'telegram' | 'mega' | 'unknown'
+type CheckStatus = 'valid' | 'invalid' | 'expired' | 'unknown'
+
+type TelegramEntityType = 'channel' | 'group' | 'user'
+type MegaEntityType = 'folder' | 'file' | 'chat' | 'unknown'
+
+type TelegramMetadata = {
+  title: string | null
+  description: string | null
+  photo: string | null
+  type: TelegramEntityType | null
+  memberCount: number | null
+  memberCountRaw: string | null
+}
+
+type MegaMetadata = {
+  title: string | null
+  description: string | null
+  image: string | null
+  siteName: string | null
+  type: MegaEntityType | null
+}
+
+type GenericMetadata = {
+  title: string | null
+  description: string | null
+  image: string | null
+  siteName: string | null
+}
+
+type LinkMetadata = TelegramMetadata | MegaMetadata | GenericMetadata | null
+
+type TelegramCheckResult = {
+  status: 'valid' | 'invalid'
+  platform: 'telegram'
+  metadata: TelegramMetadata | null
+}
+
+type MegaCheckResult = {
+  status: 'valid' | 'invalid' | 'expired'
+  platform: 'mega'
+  metadata: MegaMetadata | null
+}
+
+type UnknownCheckResult = {
+  status: 'valid' | 'invalid'
+  platform: 'unknown'
+  metadata: GenericMetadata | null
+}
+
+type CheckResult =
+  | TelegramCheckResult
+  | MegaCheckResult
+  | UnknownCheckResult
+  | {
+      status: 'unknown'
+      platform: Platform
+      metadata: null
+    }
+
+type HttpCheckResult = CheckResult & {
+  cached: boolean
+}
+
+type CacheEntry = {
+  data: CheckResult
+  expiresAt: number
+}
+
+type BatchRequestBody = {
+  links?: unknown
+}
+
+type BatchResultItem = HttpCheckResult & {
+  url: string
+}
+
+type RevalidationAction = 'kept' | 'deleted'
+
+type RevalidationResultItem = {
+  url: string
+  action: RevalidationAction
+  status: CheckStatus
+}
 
 // --------------------------------------------
 // CORS (Allow localhost development)
@@ -53,9 +138,9 @@ const startedAt = Date.now()
 // IN-MEMORY CACHE (5 min TTL)
 // --------------------------------------------
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-const cache = new Map<string, { data: any; expiresAt: number }>()
+const cache = new Map<string, CacheEntry>()
 
-const getCached = (key: string) => {
+const getCached = (key: string): CheckResult | null => {
   const entry = cache.get(key)
   if (!entry) return null
   if (Date.now() > entry.expiresAt) {
@@ -65,15 +150,13 @@ const getCached = (key: string) => {
   return entry.data
 }
 
-const setCache = (key: string, data: any) => {
+const setCache = (key: string, data: CheckResult): void => {
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL })
 }
 
 // --------------------------------------------
 // PLATFORM DETECTION
 // --------------------------------------------
-type Platform = 'telegram' | 'mega' | 'unknown'
-
 const detectPlatform = (url: string): Platform => {
   try {
     const u = new URL(url)
@@ -140,7 +223,7 @@ const extractPageTitle = (html: string): string | null => {
 // --------------------------------------------
 // TELEGRAM PAGE VALIDATION + METADATA
 // --------------------------------------------
-const telegramCheck = async (url: string, html: string) => {
+const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckResult> => {
   if (html.includes("tgme_page_title")) {
     incrementStat('valid').catch(() => {})
 
@@ -150,7 +233,7 @@ const telegramCheck = async (url: string, html: string) => {
     const photo = extractImgSrc(html, 'tgme_page_photo_image')
 
     // Determine type from extra text (e.g. "5 111 subscribers", "12 members", etc.)
-    let type: string | null = null
+    let type: TelegramEntityType | null = null
     let memberCount: number | null = null
     let memberCountRaw: string | null = null
     if (extra) {
@@ -184,14 +267,14 @@ const telegramCheck = async (url: string, html: string) => {
 // --------------------------------------------
 // MEGA PAGE VALIDATION + METADATA
 // --------------------------------------------
-const megaCheck = async (url: string, html: string, httpStatus: number) => {
+const megaCheck = async (url: string, html: string, httpStatus: number): Promise<MegaCheckResult> => {
   const title = extractMeta(html, 'og:title') || extractPageTitle(html)
   const description = extractMeta(html, 'og:description') || extractMeta(html, 'description')
   const image = extractMeta(html, 'og:image')
   const siteName = extractMeta(html, 'og:site_name')
 
   // Detect MEGA link type from URL path
-  let type: string | null = null
+  let type: MegaEntityType | null = null
   try {
     const u = new URL(url)
     const path = u.pathname.toLowerCase()
@@ -243,7 +326,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number) => {
 // --------------------------------------------
 // GENERIC CHECK (fallback for unknown platforms)
 // --------------------------------------------
-const genericCheck = async (url: string, html: string, httpStatus: number) => {
+const genericCheck = async (_url: string, html: string, httpStatus: number): Promise<UnknownCheckResult> => {
   const title = extractMeta(html, 'og:title') || extractPageTitle(html)
   const description = extractMeta(html, 'og:description') || extractMeta(html, 'description')
   const image = extractMeta(html, 'og:image')
@@ -270,7 +353,7 @@ const genericCheck = async (url: string, html: string, httpStatus: number) => {
 // --------------------------------------------
 // MAIN CHECK ROUTER
 // --------------------------------------------
-const httpCheck = async (url: string, skipCache = false) => {
+const httpCheck = async (url: string, skipCache = false): Promise<HttpCheckResult> => {
   // Check cache first
   if (!skipCache) {
     const cached = getCached(url)
@@ -288,7 +371,7 @@ const httpCheck = async (url: string, skipCache = false) => {
 
     incrementStat('totalChecks').catch(() => {})
 
-    let result
+    let result: CheckResult
     switch (platform) {
       case 'telegram':
         result = await telegramCheck(url, html)
@@ -309,7 +392,7 @@ const httpCheck = async (url: string, skipCache = false) => {
     setCache(url, result)
     return { ...result, cached: false }
 
-  } catch (err: any) {
+  } catch {
     incrementStat('unknown').catch(() => {})
     return { status: "unknown", platform: detectPlatform(url), metadata: null, cached: false }
   }
@@ -358,23 +441,30 @@ app.get('/', async (c) => {
 // --------------------------------------------
 app.post('/', async (c) => {
   const start = Date.now()
-  let body: any = {}
+  let body: BatchRequestBody = {}
 
   try {
-    body = await c.req.json()
+    body = await c.req.json<BatchRequestBody>()
   } catch {
     return c.json({ error: "Invalid JSON" }, 400)
   }
 
-  const links: string[] = body.links || []
+  const links = Array.isArray(body.links) ? body.links : []
 
-  if (!Array.isArray(links) || links.length === 0) {
+  if (links.length === 0) {
     return c.json({ error: "Provide { links: [...] }" }, 400)
   }
 
-  const normalized = Array.from(new Set(links.map(normalize).filter(Boolean)))
+  const normalized = Array.from(
+    new Set(
+      links
+        .filter((value): value is string => typeof value === 'string')
+        .map(normalize)
+        .filter(Boolean)
+    )
+  )
 
-  const results = await Promise.all(
+  const results: BatchResultItem[] = await Promise.all(
     normalized.map(async (url) => {
       const res = await httpCheck(url)
       return { url, ...res }
@@ -462,13 +552,13 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
   // OPTIMIZATION: Increased chunk size to 50 and removed artificial 500ms delay.
   // We also now collect invalid links and delete them in bulk at the end of each chunk.
   const chunkSize = 100
-  const results = []
+  const results: RevalidationResultItem[] = []
 
   for (let i = 0; i < links.length; i += chunkSize) {
     const chunk = links.slice(i, i + chunkSize)
     const invalidUrls: string[] = []
 
-    const chunkResults = await Promise.all(
+    const chunkResults: RevalidationResultItem[] = await Promise.all(
       chunk.map(async (row) => {
         const url = row.url as string;
         const res = await httpCheck(url, true) // skip cache
