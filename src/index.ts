@@ -445,39 +445,16 @@ app.get('/stats', async (c) => {
 })
 
 // --------------------------------------------
-// STORED LINKS
+// REVALIDATE LOGIC (helper)
 // --------------------------------------------
-app.get('/links', async (c) => {
-  const platform = c.req.query('platform')
-  const limit = parseInt(c.req.query('limit') || '50', 10)
-  const offset = parseInt(c.req.query('offset') || '0', 10)
-
-  const links = await getLinks(platform || undefined, limit, offset)
-  const total = await getLinkCount(platform || undefined)
-
-  return c.json({
-    total,
-    limit,
-    offset,
-    links
-  })
-})
-
-// --------------------------------------------
-// REVALIDATE DB LINKS
-// --------------------------------------------
-app.post('/links/validate', async (c) => {
-  const platform = c.req.query('platform')
-  let limitQuery = c.req.query('limit') || '50'
-  const offset = parseInt(c.req.query('offset') || '0', 10)
-
+const runRevalidation = async (platform?: string, limitQuery: string = '50', offset: number = 0) => {
   const isAll = limitQuery.toLowerCase() === 'all'
-  const limit = isAll ? 100000 : parseInt(limitQuery, 10)
+  const limit = isAll ? 100000 : (parseInt(limitQuery, 10) || 50)
 
   const links = await getLinks(platform || undefined, limit, offset)
   
   if (!links.length) {
-    return c.json({ message: "No links found to validate", processed: 0 })
+    return { message: "No links found to validate", processed: 0 }
   }
 
   // Process in chunks of 20 to avoid rate limits or overwhelming the network
@@ -510,12 +487,52 @@ app.post('/links/validate', async (c) => {
   const kept = results.filter(r => r.action === "kept")
   const deleted = results.filter(r => r.action === "deleted")
 
-  return c.json({
+  return {
     processed: results.length,
     kept: kept.length,
     deleted: deleted.length,
     details: results
+  }
+}
+
+// --------------------------------------------
+// STORED LINKS (and optional GET revalidation)
+// --------------------------------------------
+app.get('/links', async (c) => {
+  const platform = c.req.query('platform')
+  const limitQuery = c.req.query('limit') || '50'
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+  const validate = c.req.query('validate') !== undefined
+
+  if (validate) {
+    const result = await runRevalidation(platform || undefined, limitQuery, offset)
+    return c.json(result)
+  }
+
+  const isAll = limitQuery.toLowerCase() === 'all'
+  const limit = isAll ? 100000 : (parseInt(limitQuery, 10) || 50)
+
+  const links = await getLinks(platform || undefined, limit, offset)
+  const total = await getLinkCount(platform || undefined)
+
+  return c.json({
+    total,
+    limit: isAll ? 'all' : limit,
+    offset,
+    links
   })
+})
+
+// --------------------------------------------
+// REVALIDATE DB LINKS
+// --------------------------------------------
+app.post('/links/validate', async (c) => {
+  const platform = c.req.query('platform')
+  const limitQuery = c.req.query('limit') || '50'
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+
+  const result = await runRevalidation(platform || undefined, limitQuery, offset)
+  return c.json(result)
 })
 
 // STORED LINKS STATS
