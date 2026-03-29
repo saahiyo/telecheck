@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats, deleteLink } from './db.js'
+import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats, deleteLinks } from './db.js'
 
 const app = new Hono()
 
@@ -457,12 +457,15 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     return { message: "No links found to validate", processed: 0 }
   }
 
-  // Process in chunks of 20 to avoid rate limits or overwhelming the network
-  const chunkSize = 20
+  // OPTIMIZATION: Increased chunk size to 50 and removed artificial 500ms delay.
+  // We also now collect invalid links and delete them in bulk at the end of each chunk.
+  const chunkSize = 50
   const results = []
 
   for (let i = 0; i < links.length; i += chunkSize) {
     const chunk = links.slice(i, i + chunkSize)
+    const invalidUrls: string[] = []
+
     const chunkResults = await Promise.all(
       chunk.map(async (row) => {
         const url = row.url as string;
@@ -471,17 +474,18 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
         if (res.status === 'valid') {
           return { url, action: "kept", status: res.status }
         } else {
-          await deleteLink(url).catch(() => {})
+          invalidUrls.push(url);
           return { url, action: "deleted", status: res.status }
         }
       })
     )
-    results.push(...chunkResults)
 
-    // Wait 500ms between chunks if there are more to process
-    if (i + chunkSize < links.length) {
-      await new Promise(r => setTimeout(r, 500))
+    // Per-batch cleanup: Delete all invalid links found in this chunk at once
+    if (invalidUrls.length > 0) {
+      await deleteLinks(invalidUrls).catch(() => {})
     }
+
+    results.push(...chunkResults)
   }
 
   const kept = results.filter(r => r.action === "kept")
@@ -528,7 +532,7 @@ app.get('/links', async (c) => {
 // --------------------------------------------
 app.post('/links/validate', async (c) => {
   const platform = c.req.query('platform')
-  const limitQuery = c.req.query('limit') || '50'
+  const limitQuery = c.req.query('limit') || '100'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
 
   const result = await runRevalidation(platform || undefined, limitQuery, offset)

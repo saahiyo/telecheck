@@ -98,11 +98,12 @@ export const getLinkByUrl = async (url: string) => {
 }
 
 // --------------------------------------------
-// DELETE: Remove a link
+// DELETE: Remove multiple links
 // --------------------------------------------
-export const deleteLink = async (url: string) => {
+export const deleteLinks = async (urls: string[]) => {
+  if (!urls.length) return
   const sql = getDb()
-  await sql`DELETE FROM links WHERE url = ${url}`
+  await sql`DELETE FROM links WHERE url = ANY(${urls})`
 }
 
 // --------------------------------------------
