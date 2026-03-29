@@ -87,29 +87,30 @@ GET https://telecheck.vercel.app/links?platform=telegram&limit=10
 - `platform`: `telegram` or `mega` (optional)
 - `limit`: Default 50
 - `offset`: For pagination
+- `validate`: Any value present triggers revalidation for returned links (e.g. `?validate=1`)
 
 ---
 
 ### 📊 4. **API & DB Stats** (GET)
-- `/stats`: Runtime metrics (uptime, cache hits, memory stats).
-- `/links/stats`: Database counts per platform.
+- `/stats`: runtime metrics including `uptime_ms`, `cacheSize`, and persistent DB counters from `stats` table (valid/invalid/cacheHits/cacheMisses/totalChecks/unknown).
+- `/links/stats`: Database counts per platform (`total`, `telegram`, `mega`).
 
 ---
 
-### 🧹 5. **Re-validate & Clean Database** (POST)
+### 🧹 5. **Re-validate & Clean Database** (GET / POST)
 Perform a fresh check on links already stored in the database. Valid links are updated with the latest metadata, and invalid/expired links are automatically deleted.
 
 ```http
+GET  https://telecheck.vercel.app/links/validate?limit=all
 POST https://telecheck.vercel.app/links/validate?limit=all
 ```
 
-- `limit`: `50` (default), or `all` to process the entire database.
+- `limit`: `100` (default), or `all` to process the entire database.
 - `platform`: `telegram` or `mega` (optional) to filter which links to re-validate.
 - `offset`: For pagination.
 
 **Safety Features:**
-- **Batching**: Processes links in parallel chunks of 20 to prevent timeouts.
-- **Throttling**: 500ms delay between batches to avoid rate limits.
+- **Batching**: Processes links in parallel chunks of 100 to prevent timeouts and speed validation.
 - **Cache Bypass**: Always fetches fresh status from the source.
 
 ---

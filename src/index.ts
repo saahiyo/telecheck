@@ -449,7 +449,9 @@ app.get('/stats', async (c) => {
 // --------------------------------------------
 const runRevalidation = async (platform?: string, limitQuery: string = '50', offset: number = 0) => {
   const isAll = limitQuery.toLowerCase() === 'all'
-  const limit = isAll ? 100000 : (parseInt(limitQuery, 10) || 50)
+  const parsedLimit = parseInt(limitQuery, 10)
+  const numericLimit = Number.isNaN(parsedLimit) ? 50 : parsedLimit
+  const limit = isAll ? 100000 : Math.min(Math.max(numericLimit, 1), 100000)
 
   const links = await getLinks(platform || undefined, limit, offset)
   
@@ -530,12 +532,25 @@ app.get('/links', async (c) => {
 // --------------------------------------------
 // REVALIDATE DB LINKS
 // --------------------------------------------
+const handleLinksValidateRequest = async (platform?: string, limitQuery: string = '100', offset: number = 0) => {
+  return runRevalidation(platform || undefined, limitQuery, offset)
+}
+
+app.get('/links/validate', async (c) => {
+  const platform = c.req.query('platform')
+  const limitQuery = c.req.query('limit') || '100'
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+
+  const result = await handleLinksValidateRequest(platform, limitQuery, offset)
+  return c.json(result)
+})
+
 app.post('/links/validate', async (c) => {
   const platform = c.req.query('platform')
   const limitQuery = c.req.query('limit') || '100'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
 
-  const result = await runRevalidation(platform || undefined, limitQuery, offset)
+  const result = await handleLinksValidateRequest(platform, limitQuery, offset)
   return c.json(result)
 })
 
