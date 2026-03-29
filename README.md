@@ -96,7 +96,25 @@ GET https://telecheck.vercel.app/links?platform=telegram&limit=10
 
 ---
 
-### ℹ️ 5. **Utilities** (GET)
+### 🧹 5. **Re-validate & Clean Database** (POST)
+Perform a fresh check on links already stored in the database. Valid links are updated with the latest metadata, and invalid/expired links are automatically deleted.
+
+```http
+POST https://telecheck.vercel.app/links/validate?limit=all
+```
+
+- `limit`: `50` (default), or `all` to process the entire database.
+- `platform`: `telegram` or `mega` (optional) to filter which links to re-validate.
+- `offset`: For pagination.
+
+**Safety Features:**
+- **Batching**: Processes links in parallel chunks of 20 to prevent timeouts.
+- **Throttling**: 500ms delay between batches to avoid rate limits.
+- **Cache Bypass**: Always fetches fresh status from the source.
+
+---
+
+### ℹ️ 6. **Utilities** (GET)
 - `/health`: API health check.
 - `/info`: API version and supported features.
 - `/normalize?value=@user`: Test the normalization logic without a fetch check.

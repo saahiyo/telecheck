@@ -98,6 +98,14 @@ export const getLinkByUrl = async (url: string) => {
 }
 
 // --------------------------------------------
+// DELETE: Remove a link
+// --------------------------------------------
+export const deleteLink = async (url: string) => {
+  const sql = getDb()
+  await sql`DELETE FROM links WHERE url = ${url}`
+}
+
+// --------------------------------------------
 // COUNT: Get total stored links
 // --------------------------------------------
 export const getLinkCount = async (platform?: string) => {

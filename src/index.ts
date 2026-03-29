@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats } from './db.js'
+import { saveLink, getLinks, getLinkByUrl, getLinkCount, incrementStat, getStats, deleteLink } from './db.js'
 
 const app = new Hono()
 
@@ -270,12 +270,14 @@ const genericCheck = async (url: string, html: string, httpStatus: number) => {
 // --------------------------------------------
 // MAIN CHECK ROUTER
 // --------------------------------------------
-const httpCheck = async (url: string) => {
+const httpCheck = async (url: string, skipCache = false) => {
   // Check cache first
-  const cached = getCached(url)
-  if (cached) {
-    incrementStat('cacheHits').catch(() => {})
-    return { ...cached, cached: true }
+  if (!skipCache) {
+    const cached = getCached(url)
+    if (cached) {
+      incrementStat('cacheHits').catch(() => {})
+      return { ...cached, cached: true }
+    }
   }
   incrementStat('cacheMisses').catch(() => {})
 
@@ -413,6 +415,7 @@ app.get('/info', (c) => {
       batchCheck: "POST / → { links: [] }",
       storedLinks: "/links?platform=<platform>&limit=<n>",
       linksStats: "/links/stats",
+      revalidateLinks: "POST /links/validate?limit=all",
       health: "/health",
       stats: "/stats",
       normalize: "/normalize?value=<input>"
@@ -457,6 +460,61 @@ app.get('/links', async (c) => {
     limit,
     offset,
     links
+  })
+})
+
+// --------------------------------------------
+// REVALIDATE DB LINKS
+// --------------------------------------------
+app.post('/links/validate', async (c) => {
+  const platform = c.req.query('platform')
+  let limitQuery = c.req.query('limit') || '50'
+  const offset = parseInt(c.req.query('offset') || '0', 10)
+
+  const isAll = limitQuery.toLowerCase() === 'all'
+  const limit = isAll ? 100000 : parseInt(limitQuery, 10)
+
+  const links = await getLinks(platform || undefined, limit, offset)
+  
+  if (!links.length) {
+    return c.json({ message: "No links found to validate", processed: 0 })
+  }
+
+  // Process in chunks of 20 to avoid rate limits or overwhelming the network
+  const chunkSize = 20
+  const results = []
+
+  for (let i = 0; i < links.length; i += chunkSize) {
+    const chunk = links.slice(i, i + chunkSize)
+    const chunkResults = await Promise.all(
+      chunk.map(async (row) => {
+        const url = row.url as string;
+        const res = await httpCheck(url, true) // skip cache
+        
+        if (res.status === 'valid') {
+          return { url, action: "kept", status: res.status }
+        } else {
+          await deleteLink(url).catch(() => {})
+          return { url, action: "deleted", status: res.status }
+        }
+      })
+    )
+    results.push(...chunkResults)
+
+    // Wait 500ms between chunks if there are more to process
+    if (i + chunkSize < links.length) {
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
+
+  const kept = results.filter(r => r.action === "kept")
+  const deleted = results.filter(r => r.action === "deleted")
+
+  return c.json({
+    processed: results.length,
+    kept: kept.length,
+    deleted: deleted.length,
+    details: results
   })
 })
 
