@@ -459,7 +459,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 
   // OPTIMIZATION: Increased chunk size to 50 and removed artificial 500ms delay.
   // We also now collect invalid links and delete them in bulk at the end of each chunk.
-  const chunkSize = 50
+  const chunkSize = 100
   const results = []
 
   for (let i = 0; i < links.length; i += chunkSize) {
