@@ -89,6 +89,10 @@ type RevalidationResultItem = {
   status: CheckStatus
 }
 
+type LinkRow = {
+  url: string
+}
+
 // --------------------------------------------
 // CORS (Allow localhost development)
 // --------------------------------------------
@@ -552,32 +556,42 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
   // OPTIMIZATION: Increased chunk size to 50 and removed artificial 500ms delay.
   // We also now collect invalid links and delete them in bulk at the end of each chunk.
   const chunkSize = 100
+  const chunkConcurrency = 4
   const results: RevalidationResultItem[] = []
 
+  const chunks: LinkRow[][] = []
   for (let i = 0; i < links.length; i += chunkSize) {
-    const chunk = links.slice(i, i + chunkSize)
+    chunks.push(links.slice(i, i + chunkSize) as LinkRow[])
+  }
+
+  const processChunk = async (chunk: LinkRow[]): Promise<RevalidationResultItem[]> => {
     const invalidUrls: string[] = []
 
     const chunkResults: RevalidationResultItem[] = await Promise.all(
       chunk.map(async (row) => {
-        const url = row.url as string;
-        const res = await httpCheck(url, true) // skip cache
-        
+        const url = row.url
+        const res = await httpCheck(url, true)
+
         if (res.status === 'valid') {
-          return { url, action: "kept", status: res.status }
-        } else {
-          invalidUrls.push(url);
-          return { url, action: "deleted", status: res.status }
+          return { url, action: 'kept', status: res.status }
         }
+
+        invalidUrls.push(url)
+        return { url, action: 'deleted', status: res.status }
       })
     )
 
-    // Per-batch cleanup: Delete all invalid links found in this chunk at once
     if (invalidUrls.length > 0) {
       await deleteLinks(invalidUrls).catch(() => {})
     }
 
-    results.push(...chunkResults)
+    return chunkResults
+  }
+
+  for (let i = 0; i < chunks.length; i += chunkConcurrency) {
+    const chunkGroup = chunks.slice(i, i + chunkConcurrency)
+    const groupedResults = await Promise.all(chunkGroup.map(processChunk))
+    results.push(...groupedResults.flat())
   }
 
   const kept = results.filter(r => r.action === "kept")
