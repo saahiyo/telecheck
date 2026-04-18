@@ -547,7 +547,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
   const numericLimit = Number.isNaN(parsedLimit) ? 50 : parsedLimit
   const limit = isAll ? 100000 : Math.min(Math.max(numericLimit, 1), 100000)
 
-  const links = await getLinks(platform || undefined, limit, offset)
+  const links = await getLinks({ platform: platform || undefined, limit, offset })
   
   if (!links.length) {
     return { message: "No links found to validate", processed: 0 }
@@ -610,6 +610,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 // --------------------------------------------
 app.get('/links', async (c) => {
   const platform = c.req.query('platform')
+  const search = c.req.query('search')
   const limitQuery = c.req.query('limit') || '50'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const validate = c.req.query('validate') !== undefined
@@ -622,7 +623,12 @@ app.get('/links', async (c) => {
   const isAll = limitQuery.toLowerCase() === 'all'
   const limit = isAll ? 100000 : (parseInt(limitQuery, 10) || 50)
 
-  const links = await getLinks(platform || undefined, limit, offset)
+  const links = await getLinks({
+    platform: platform || undefined,
+    search: search || undefined,
+    limit,
+    offset
+  })
   const total = await getLinkCount(platform || undefined)
 
   return c.json({

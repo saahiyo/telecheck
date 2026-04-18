@@ -71,18 +71,63 @@ export const saveLink = async (
 // --------------------------------------------
 // GET: Query stored links
 // --------------------------------------------
-export const getLinks = async (platform?: string, limit = 50, offset = 0) => {
+export const getLinks = async ({
+  platform,
+  search,
+  limit = 50,
+  offset = 0
+}: {
+  platform?: string
+  search?: string
+  limit?: number
+  offset?: number
+}) => {
   const sql = getDb()
+
+  if (platform && search) {
+    const searchPattern = '%' + search + '%'
+    return sql`
+      SELECT *
+      FROM links
+      WHERE platform = ${platform}
+        AND (
+          url ILIKE ${searchPattern}
+          OR title ILIKE ${searchPattern}
+          OR description ILIKE ${searchPattern}
+        )
+      ORDER BY checked_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
   if (platform) {
     return sql`
-      SELECT * FROM links
+      SELECT *
+      FROM links
       WHERE platform = ${platform}
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
   }
+
+  if (search) {
+    const searchPattern = '%' + search + '%'
+    return sql`
+      SELECT *
+      FROM links
+      WHERE (
+        url ILIKE ${searchPattern}
+        OR title ILIKE ${searchPattern}
+        OR description ILIKE ${searchPattern}
+      )
+      ORDER BY checked_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
   return sql`
-    SELECT * FROM links
+    SELECT *
+    FROM links
     ORDER BY checked_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
