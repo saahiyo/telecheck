@@ -33,7 +33,31 @@ export const initDB = async () => {
       updated_at TIMESTAMP DEFAULT NOW()
     )
   `
-  console.log('✅ Database initialized — links + stats tables ready')
+
+  // ── Performance indexes ──
+  // GIN index for full-text search on url, title, description
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_search
+    ON links
+    USING GIN (to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,'')))
+  `
+  // B-tree index on platform for filtered queries
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_platform
+    ON links (platform)
+  `
+  // B-tree index on checked_at for ORDER BY sorting
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_checked_at
+    ON links (checked_at DESC)
+  `
+  // Composite index for the most common query pattern: filter by platform + sort by date
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_platform_checked
+    ON links (platform, checked_at DESC)
+  `
+
+  console.log('✅ Database initialized — tables + indexes ready')
 }
 
 // --------------------------------------------
@@ -69,7 +93,7 @@ export const saveLink = async (
 }
 
 // --------------------------------------------
-// GET: Query stored links
+// GET: Query stored links (uses GIN index for search)
 // --------------------------------------------
 export const getLinks = async ({
   platform,
@@ -85,16 +109,13 @@ export const getLinks = async ({
   const sql = getDb()
 
   if (platform && search) {
-    const searchPattern = '%' + search + '%'
+    const tsQuery = search.trim().split(/\s+/).join(' & ')
     return sql`
       SELECT *
       FROM links
       WHERE platform = ${platform}
-        AND (
-          url ILIKE ${searchPattern}
-          OR title ILIKE ${searchPattern}
-          OR description ILIKE ${searchPattern}
-        )
+        AND to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
+            @@ to_tsquery('english', ${tsQuery})
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -111,15 +132,12 @@ export const getLinks = async ({
   }
 
   if (search) {
-    const searchPattern = '%' + search + '%'
+    const tsQuery = search.trim().split(/\s+/).join(' & ')
     return sql`
       SELECT *
       FROM links
-      WHERE (
-        url ILIKE ${searchPattern}
-        OR title ILIKE ${searchPattern}
-        OR description ILIKE ${searchPattern}
-      )
+      WHERE to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
+            @@ to_tsquery('english', ${tsQuery})
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -152,14 +170,37 @@ export const deleteLinks = async (urls: string[]) => {
 }
 
 // --------------------------------------------
-// COUNT: Get total stored links
+// COUNT: Get total stored links (supports search filter)
 // --------------------------------------------
-export const getLinkCount = async (platform?: string) => {
+export const getLinkCount = async (platform?: string, search?: string) => {
   const sql = getDb()
+
+  if (platform && search) {
+    const tsQuery = search.trim().split(/\s+/).join(' & ')
+    const rows = await sql`
+      SELECT COUNT(*) as count FROM links
+      WHERE platform = ${platform}
+        AND to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
+            @@ to_tsquery('english', ${tsQuery})
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
   if (platform) {
     const rows = await sql`SELECT COUNT(*) as count FROM links WHERE platform = ${platform}`
     return parseInt(rows[0].count as string, 10)
   }
+
+  if (search) {
+    const tsQuery = search.trim().split(/\s+/).join(' & ')
+    const rows = await sql`
+      SELECT COUNT(*) as count FROM links
+      WHERE to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
+            @@ to_tsquery('english', ${tsQuery})
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
   const rows = await sql`SELECT COUNT(*) as count FROM links`
   return parseInt(rows[0].count as string, 10)
 }

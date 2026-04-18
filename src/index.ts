@@ -629,7 +629,7 @@ app.get('/links', async (c) => {
     limit,
     offset
   })
-  const total = await getLinkCount(platform || undefined)
+  const total = await getLinkCount(platform || undefined, search || undefined)
 
   return c.json({
     total,
