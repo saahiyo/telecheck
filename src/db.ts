@@ -93,7 +93,7 @@ export const saveLink = async (
 }
 
 // --------------------------------------------
-// GET: Query stored links (uses GIN index for search)
+// GET: Query stored links (ILIKE search for substring matching)
 // --------------------------------------------
 export const getLinks = async ({
   platform,
@@ -107,15 +107,18 @@ export const getLinks = async ({
   offset?: number
 }) => {
   const sql = getDb()
+  const pattern = search ? `%${search.trim()}%` : null
 
-  if (platform && search) {
-    const tsQuery = search.trim().split(/\s+/).join(' & ')
+  if (platform && pattern) {
     return sql`
       SELECT *
       FROM links
       WHERE platform = ${platform}
-        AND to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
-            @@ to_tsquery('english', ${tsQuery})
+        AND (
+          url ILIKE ${pattern}
+          OR title ILIKE ${pattern}
+          OR description ILIKE ${pattern}
+        )
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -131,13 +134,13 @@ export const getLinks = async ({
     `
   }
 
-  if (search) {
-    const tsQuery = search.trim().split(/\s+/).join(' & ')
+  if (pattern) {
     return sql`
       SELECT *
       FROM links
-      WHERE to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
-            @@ to_tsquery('english', ${tsQuery})
+      WHERE url ILIKE ${pattern}
+        OR title ILIKE ${pattern}
+        OR description ILIKE ${pattern}
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -174,14 +177,17 @@ export const deleteLinks = async (urls: string[]) => {
 // --------------------------------------------
 export const getLinkCount = async (platform?: string, search?: string) => {
   const sql = getDb()
+  const pattern = search ? `%${search.trim()}%` : null
 
-  if (platform && search) {
-    const tsQuery = search.trim().split(/\s+/).join(' & ')
+  if (platform && pattern) {
     const rows = await sql`
       SELECT COUNT(*) as count FROM links
       WHERE platform = ${platform}
-        AND to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
-            @@ to_tsquery('english', ${tsQuery})
+        AND (
+          url ILIKE ${pattern}
+          OR title ILIKE ${pattern}
+          OR description ILIKE ${pattern}
+        )
     `
     return parseInt(rows[0].count as string, 10)
   }
@@ -191,12 +197,12 @@ export const getLinkCount = async (platform?: string, search?: string) => {
     return parseInt(rows[0].count as string, 10)
   }
 
-  if (search) {
-    const tsQuery = search.trim().split(/\s+/).join(' & ')
+  if (pattern) {
     const rows = await sql`
       SELECT COUNT(*) as count FROM links
-      WHERE to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,''))
-            @@ to_tsquery('english', ${tsQuery})
+      WHERE url ILIKE ${pattern}
+        OR title ILIKE ${pattern}
+        OR description ILIKE ${pattern}
     `
     return parseInt(rows[0].count as string, 10)
   }
