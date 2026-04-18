@@ -553,47 +553,54 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     return { message: "No links found to validate", processed: 0 }
   }
 
-  // Reduced concurrency to avoid rate-limiting (which causes false 'unknown' results)
-  const chunkSize = 20
-  const chunkConcurrency = 2
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
   const results: RevalidationResultItem[] = []
+  const invalidUrls: string[] = []
 
-  const chunks: LinkRow[][] = []
-  for (let i = 0; i < links.length; i += chunkSize) {
-    chunks.push(links.slice(i, i + chunkSize) as LinkRow[])
-  }
+  for (let i = 0; i < links.length; i++) {
+    const url = (links[i] as LinkRow).url
 
-  const processChunk = async (chunk: LinkRow[]): Promise<RevalidationResultItem[]> => {
-    const invalidUrls: string[] = []
+    // First attempt
+    const res = await httpCheck(url, true)
 
-    const chunkResults: RevalidationResultItem[] = await Promise.all(
-      chunk.map(async (row) => {
-        const url = row.url
-        const res = await httpCheck(url, true)
-
-        // Only delete links that are explicitly invalid or expired.
-        // 'unknown' means we couldn't reach the server (timeout, rate-limit, etc.)
-        // — those should be kept, not deleted.
-        if (res.status === 'invalid' || res.status === 'expired') {
-          invalidUrls.push(url)
-          return { url, action: 'deleted' as RevalidationAction, status: res.status }
-        }
-
-        return { url, action: 'kept' as RevalidationAction, status: res.status }
-      })
-    )
-
-    if (invalidUrls.length > 0) {
-      await deleteLinks(invalidUrls).catch(() => {})
+    if (res.status === 'valid') {
+      results.push({ url, action: 'kept' as RevalidationAction, status: res.status })
+      // Small delay between checks to avoid rate-limiting
+      if (i < links.length - 1) await delay(300)
+      continue
     }
 
-    return chunkResults
+    // 'unknown' = network error → keep the link, don't delete
+    if (res.status === 'unknown') {
+      results.push({ url, action: 'kept' as RevalidationAction, status: res.status })
+      if (i < links.length - 1) await delay(300)
+      continue
+    }
+
+    // First check returned 'invalid' or 'expired' — retry once after cooldown
+    // (Telegram rate-limiting often returns pages without tgme_page_title)
+    await delay(2000)
+    const retryRes = await httpCheck(url, true)
+
+    if (retryRes.status === 'valid') {
+      // False positive on first try — keep the link
+      results.push({ url, action: 'kept' as RevalidationAction, status: retryRes.status })
+    } else if (retryRes.status === 'unknown') {
+      // Still can't reach — keep it safe
+      results.push({ url, action: 'kept' as RevalidationAction, status: retryRes.status })
+    } else {
+      // Confirmed invalid/expired on second attempt — safe to delete
+      invalidUrls.push(url)
+      results.push({ url, action: 'deleted' as RevalidationAction, status: retryRes.status })
+    }
+
+    if (i < links.length - 1) await delay(500)
   }
 
-  for (let i = 0; i < chunks.length; i += chunkConcurrency) {
-    const chunkGroup = chunks.slice(i, i + chunkConcurrency)
-    const groupedResults = await Promise.all(chunkGroup.map(processChunk))
-    results.push(...groupedResults.flat())
+  // Bulk delete all confirmed-invalid links
+  if (invalidUrls.length > 0) {
+    await deleteLinks(invalidUrls).catch(() => {})
   }
 
   const kept = results.filter(r => r.action === "kept")
