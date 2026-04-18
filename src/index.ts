@@ -553,10 +553,9 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     return { message: "No links found to validate", processed: 0 }
   }
 
-  // OPTIMIZATION: Increased chunk size to 50 and removed artificial 500ms delay.
-  // We also now collect invalid links and delete them in bulk at the end of each chunk.
-  const chunkSize = 100
-  const chunkConcurrency = 4
+  // Reduced concurrency to avoid rate-limiting (which causes false 'unknown' results)
+  const chunkSize = 20
+  const chunkConcurrency = 2
   const results: RevalidationResultItem[] = []
 
   const chunks: LinkRow[][] = []
@@ -572,12 +571,15 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
         const url = row.url
         const res = await httpCheck(url, true)
 
-        if (res.status === 'valid') {
-          return { url, action: 'kept', status: res.status }
+        // Only delete links that are explicitly invalid or expired.
+        // 'unknown' means we couldn't reach the server (timeout, rate-limit, etc.)
+        // — those should be kept, not deleted.
+        if (res.status === 'invalid' || res.status === 'expired') {
+          invalidUrls.push(url)
+          return { url, action: 'deleted' as RevalidationAction, status: res.status }
         }
 
-        invalidUrls.push(url)
-        return { url, action: 'deleted', status: res.status }
+        return { url, action: 'kept' as RevalidationAction, status: res.status }
       })
     )
 
@@ -596,11 +598,13 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 
   const kept = results.filter(r => r.action === "kept")
   const deleted = results.filter(r => r.action === "deleted")
+  const unknown = results.filter(r => r.status === "unknown")
 
   return {
     processed: results.length,
     kept: kept.length,
     deleted: deleted.length,
+    skipped: unknown.length,
     details: results
   }
 }
