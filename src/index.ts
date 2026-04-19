@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank } from './db.js'
 
 const app = new Hono()
 
@@ -573,7 +573,8 @@ app.get('/normalize', (c) => {
 
 // GLOBAL STATS (reads from DB — persistent across restarts & deployments)
 app.get('/stats', async (c) => {
-  const dbStats = await getStats()
+  const period = c.req.query('period')
+  const dbStats = period === '24h' ? await get24hStats() : await getStats()
   return c.json({
     uptime_ms: Date.now() - startedAt,
     ...dbStats,
