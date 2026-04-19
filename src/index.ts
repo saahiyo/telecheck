@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, deleteLinks } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank } from './db.js'
 
 const app = new Hono()
 
@@ -111,6 +111,31 @@ app.use(
     credentials: false
   })
 )
+
+// --------------------------------------------
+// IP HASH HELPER (SHA-256 via Web Crypto API)
+// --------------------------------------------
+const hashIp = async (ip: string): Promise<string> => {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(ip + '_telecheck_salt_v1')
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+const getClientIp = (c: any): string => {
+  return (
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    c.req.header('x-real-ip') ||
+    c.req.header('cf-connecting-ip') ||
+    'unknown'
+  )
+}
+
+const getClientIpHash = async (c: any): Promise<string> => {
+  const ip = getClientIp(c)
+  return hashIp(ip)
+}
 
 // --------------------------------------------
 // CENTRALIZED ERROR HANDLER
@@ -357,7 +382,7 @@ const genericCheck = async (_url: string, html: string, httpStatus: number): Pro
 // --------------------------------------------
 // MAIN CHECK ROUTER
 // --------------------------------------------
-const httpCheck = async (url: string, skipCache = false): Promise<HttpCheckResult> => {
+const httpCheck = async (url: string, skipCache = false, contributorId?: number | null): Promise<HttpCheckResult> => {
   // Check cache first
   if (!skipCache) {
     const cached = getCached(url)
@@ -390,7 +415,7 @@ const httpCheck = async (url: string, skipCache = false): Promise<HttpCheckResul
 
     // Save valid links to database (fire & forget)
     if (result.status === 'valid') {
-      saveLink(url, result.platform, result.status, result.metadata).catch(() => {})
+      saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
     }
 
     setCache(url, result)
@@ -418,6 +443,8 @@ app.get('/', async (c) => {
         multiple: "POST / → { links: [] }",
         links: "/links?platform=<platform>&limit=<n>",
         linksStats: "/links/stats",
+        contributors: "/contributors",
+        myProfile: "/contributors/me",
         health: "/health",
         stats: "/stats",
         normalize: "/normalize?value=<input>",
@@ -428,8 +455,16 @@ app.get('/', async (c) => {
     })
   }
 
+  // Resolve contributor from IP
+  let contributorId: number | null = null
+  try {
+    const ipHash = await getClientIpHash(c)
+    const contributor = await getOrCreateContributor(ipHash)
+    contributorId = contributor.id as number
+  } catch {}
+
   const normalized = normalize(link)
-  const result = await httpCheck(normalized)
+  const result = await httpCheck(normalized, false, contributorId)
 
   return c.json({
     input: link,
@@ -459,6 +494,14 @@ app.post('/', async (c) => {
     return c.json({ error: "Provide { links: [...] }" }, 400)
   }
 
+  // Resolve contributor from IP
+  let contributorId: number | null = null
+  try {
+    const ipHash = await getClientIpHash(c)
+    const contributor = await getOrCreateContributor(ipHash)
+    contributorId = contributor.id as number
+  } catch {}
+
   const normalized = Array.from(
     new Set(
       links
@@ -470,7 +513,7 @@ app.post('/', async (c) => {
 
   const results: BatchResultItem[] = await Promise.all(
     normalized.map(async (url) => {
-      const res = await httpCheck(url)
+      const res = await httpCheck(url, false, contributorId)
       return { url, ...res }
     })
   )
@@ -682,6 +725,55 @@ app.get('/links/stats', async (c) => {
   const mega = await getLinkCount('mega')
 
   return c.json({ total, telegram, mega })
+})
+
+// --------------------------------------------
+// CONTRIBUTORS LEADERBOARD
+// --------------------------------------------
+app.get('/contributors', async (c) => {
+  const limitQuery = c.req.query('limit') || '20'
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+  const limit = Math.min(parseInt(limitQuery, 10) || 20, 100)
+
+  const contributors = await getContributorLeaderboard(limit, offset)
+  const total = await getContributorCount()
+
+  return c.json({
+    total,
+    limit,
+    offset,
+    contributors: contributors.map((c: any, i: number) => ({
+      rank: offset + i + 1,
+      username: c.username,
+      links_added: parseInt(c.links_added as string, 10) || 0,
+      first_seen: c.first_seen,
+      last_seen: c.last_seen
+    }))
+  })
+})
+
+// CURRENT USER'S PROFILE (matched by IP hash)
+app.get('/contributors/me', async (c) => {
+  try {
+    const ipHash = await getClientIpHash(c)
+    const contributor = await getContributorByIpHash(ipHash)
+
+    if (!contributor) {
+      return c.json({ username: null, links_added: 0, rank: null })
+    }
+
+    const rank = await getContributorRank(ipHash)
+
+    return c.json({
+      username: contributor.username,
+      links_added: parseInt(contributor.links_added as string, 10) || 0,
+      rank,
+      first_seen: contributor.first_seen,
+      last_seen: contributor.last_seen
+    })
+  } catch (err) {
+    return c.json({ username: null, links_added: 0, rank: null })
+  }
 })
 
 export default app
