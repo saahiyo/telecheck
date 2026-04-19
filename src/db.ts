@@ -351,6 +351,21 @@ export const getLinkCount = async (platform?: string, search?: string) => {
 // --------------------------------------------
 // STATS: Increment a stat counter
 // --------------------------------------------
+let hourlyTableReady = false
+const ensureHourlyTable = async () => {
+  if (hourlyTableReady) return
+  const sql = getDb()
+  await sql`
+    CREATE TABLE IF NOT EXISTS hourly_stats (
+      hour TIMESTAMP NOT NULL,
+      key TEXT NOT NULL,
+      value BIGINT NOT NULL DEFAULT 0,
+      PRIMARY KEY (hour, key)
+    )
+  `
+  hourlyTableReady = true
+}
+
 export const incrementStat = async (key: string, amount = 1) => {
   const sql = getDb()
   await sql`
@@ -360,12 +375,17 @@ export const incrementStat = async (key: string, amount = 1) => {
       value = stats.value + ${amount},
       updated_at = NOW()
   `
-  await sql`
-    INSERT INTO hourly_stats (hour, key, value)
-    VALUES (date_trunc('hour', NOW()), ${key}, ${amount})
-    ON CONFLICT (hour, key) DO UPDATE SET
-      value = hourly_stats.value + ${amount}
-  `
+  try {
+    await ensureHourlyTable()
+    await sql`
+      INSERT INTO hourly_stats (hour, key, value)
+      VALUES (date_trunc('hour', NOW()), ${key}, ${amount})
+      ON CONFLICT (hour, key) DO UPDATE SET
+        value = hourly_stats.value + ${amount}
+    `
+  } catch (e) {
+    // Silently fail — don't break the main stats flow
+  }
 }
 
 // --------------------------------------------
@@ -386,6 +406,7 @@ export const getStats = async (): Promise<Record<string, number>> => {
 // --------------------------------------------
 export const get24hStats = async (): Promise<Record<string, number>> => {
   const sql = getDb()
+  await ensureHourlyTable()
   const rows = await sql`SELECT key, SUM(value) as value FROM hourly_stats WHERE hour >= NOW() - INTERVAL '24 hours' GROUP BY key`
   const result: Record<string, number> = {}
   for (const row of rows) {
