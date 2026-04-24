@@ -23,7 +23,8 @@ export const initDB = async () => {
       type TEXT,
       member_count INTEGER,
       raw_metadata JSONB,
-      checked_at TIMESTAMP DEFAULT NOW()
+      checked_at TIMESTAMP DEFAULT NOW(),
+      tags TEXT[] DEFAULT '{}'::text[]
     )
   `
   await sql`
@@ -235,16 +236,19 @@ export const saveLink = async (
 export const getLinks = async ({
   platform,
   search,
+  tag,
   limit = 50,
   offset = 0
 }: {
   platform?: string
   search?: string
+  tag?: string
   limit?: number
   offset?: number
 }) => {
   const sql = getDb()
   const pattern = search ? `%${search.trim()}%` : null
+  const tagFilter = tag ? tag.trim() : null
 
   if (platform && pattern) {
     return sql`
@@ -256,6 +260,7 @@ export const getLinks = async ({
           OR title ILIKE ${pattern}
           OR description ILIKE ${pattern}
         )
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -266,6 +271,7 @@ export const getLinks = async ({
       SELECT *
       FROM links
       WHERE platform = ${platform}
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -275,9 +281,10 @@ export const getLinks = async ({
     return sql`
       SELECT *
       FROM links
-      WHERE url ILIKE ${pattern}
+      WHERE (url ILIKE ${pattern}
         OR title ILIKE ${pattern}
-        OR description ILIKE ${pattern}
+        OR description ILIKE ${pattern})
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
       ORDER BY checked_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `
@@ -286,6 +293,7 @@ export const getLinks = async ({
   return sql`
     SELECT *
     FROM links
+    WHERE (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
     ORDER BY checked_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -312,9 +320,10 @@ export const deleteLinks = async (urls: string[]) => {
 // --------------------------------------------
 // COUNT: Get total stored links (supports search filter)
 // --------------------------------------------
-export const getLinkCount = async (platform?: string, search?: string) => {
+export const getLinkCount = async (platform?: string, search?: string, tag?: string) => {
   const sql = getDb()
   const pattern = search ? `%${search.trim()}%` : null
+  const tagFilter = tag ? tag.trim() : null
 
   if (platform && pattern) {
     const rows = await sql`
@@ -325,27 +334,46 @@ export const getLinkCount = async (platform?: string, search?: string) => {
           OR title ILIKE ${pattern}
           OR description ILIKE ${pattern}
         )
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
     `
     return parseInt(rows[0].count as string, 10)
   }
 
   if (platform) {
-    const rows = await sql`SELECT COUNT(*) as count FROM links WHERE platform = ${platform}`
+    const rows = await sql`SELECT COUNT(*) as count FROM links WHERE platform = ${platform} AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))`
     return parseInt(rows[0].count as string, 10)
   }
 
   if (pattern) {
     const rows = await sql`
       SELECT COUNT(*) as count FROM links
-      WHERE url ILIKE ${pattern}
+      WHERE (url ILIKE ${pattern}
         OR title ILIKE ${pattern}
-        OR description ILIKE ${pattern}
+        OR description ILIKE ${pattern})
+        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
     `
     return parseInt(rows[0].count as string, 10)
   }
 
-  const rows = await sql`SELECT COUNT(*) as count FROM links`
+  const rows = await sql`SELECT COUNT(*) as count FROM links WHERE (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))`
   return parseInt(rows[0].count as string, 10)
+}
+
+// --------------------------------------------
+// TAGS: Update tags for a link
+// --------------------------------------------
+export const updateLinkTags = async (url: string, tags: string[]) => {
+  const sql = getDb()
+  await sql`UPDATE links SET tags = ${tags} WHERE url = ${url}`
+}
+
+// --------------------------------------------
+// TAGS: Get all unique tags used across links
+// --------------------------------------------
+export const getUniqueTags = async () => {
+  const sql = getDb()
+  const rows = await sql`SELECT DISTINCT unnest(tags) as tag FROM links`
+  return rows.map(r => r.tag as string).filter(Boolean)
 }
 
 // --------------------------------------------

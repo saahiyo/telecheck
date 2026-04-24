@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank, updateLinkTags, getUniqueTags } from './db.js'
 
 const app = new Hono()
 
@@ -666,6 +666,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 app.get('/links', async (c) => {
   const platform = c.req.query('platform')
   const search = c.req.query('search')
+  const tag = c.req.query('tag')
   const limitQuery = c.req.query('limit') || '50'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const validate = c.req.query('validate') !== undefined
@@ -681,10 +682,11 @@ app.get('/links', async (c) => {
   const links = await getLinks({
     platform: platform || undefined,
     search: search || undefined,
+    tag: tag || undefined,
     limit,
     offset
   })
-  const total = await getLinkCount(platform || undefined, search || undefined)
+  const total = await getLinkCount(platform || undefined, search || undefined, tag || undefined)
 
   return c.json({
     total,
@@ -717,6 +719,34 @@ app.post('/links/validate', async (c) => {
 
   const result = await handleLinksValidateRequest(platform, limitQuery, offset)
   return c.json(result)
+})
+
+// --------------------------------------------
+// TAGS ENDPOINTS
+// --------------------------------------------
+app.get('/tags', async (c) => {
+  const tags = await getUniqueTags()
+  return c.json({ tags })
+})
+
+app.post('/links/tags', async (c) => {
+  try {
+    const { url, tags } = await c.req.json<{ url: string; tags: string[] }>()
+    if (!url || !Array.isArray(tags)) {
+      return c.json({ error: 'Invalid payload: expected { url: string, tags: string[] }' }, 400)
+    }
+    
+    // Basic URL validation
+    if (!url.startsWith('http')) {
+      return c.json({ error: 'Invalid URL format' }, 400)
+    }
+
+    await updateLinkTags(url, tags)
+    return c.json({ success: true, url, tags })
+  } catch (error) {
+    console.error('Error updating tags:', error)
+    return c.json({ error: 'Failed to update tags' }, 500)
+  }
 })
 
 // STORED LINKS STATS
