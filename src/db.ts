@@ -1,9 +1,15 @@
-import { neon } from '@neondatabase/serverless'
+import { neon, NeonQueryFunction } from '@neondatabase/serverless'
+
+let sqlInstance: NeonQueryFunction<false, false> | null = null
 
 const getDb = () => {
+  if (sqlInstance) return sqlInstance
+
   const url = process.env.VLINKS_POSTGRES_URL || process.env.POSTGRES_URL
   if (!url) throw new Error('Missing VLINKS_POSTGRES_URL or POSTGRES_URL env var')
-  return neon(url)
+  
+  sqlInstance = neon(url)
+  return sqlInstance
 }
 
 // --------------------------------------------

@@ -1,8 +1,12 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { logger } from 'hono/logger'
 import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank, updateLinkTags, getUniqueTags, initDB } from './db.js'
 
 const app = new Hono()
+
+// Request Logging
+app.use('*', logger())
 
 type Platform = 'telegram' | 'mega' | 'unknown'
 type CheckStatus = 'valid' | 'invalid' | 'expired' | 'unknown'
