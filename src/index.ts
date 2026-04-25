@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank, updateLinkTags, getUniqueTags, initDB } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIpHash } from './db.js'
 
 const app = new Hono()
 
@@ -808,6 +808,7 @@ app.get('/contributors/me', async (c) => {
 
     return c.json({
       username: contributor.username,
+      recovery_key: contributor.recovery_key,
       links_added: parseInt(contributor.links_added as string, 10) || 0,
       rank,
       first_seen: contributor.first_seen,
@@ -815,6 +816,39 @@ app.get('/contributors/me', async (c) => {
     })
   } catch (err) {
     return c.json({ username: null, links_added: 0, rank: null })
+  }
+})
+
+// RECOVER ACCOUNT VIA KEY
+app.post('/contributors/recover', async (c) => {
+  try {
+    const { recovery_key } = await c.req.json<{ recovery_key: string }>()
+    if (!recovery_key) {
+      return c.json({ error: 'Recovery key is required' }, 400)
+    }
+
+    const contributor = await getContributorByRecoveryKey(recovery_key)
+    if (!contributor) {
+      return c.json({ error: 'Invalid recovery key' }, 404)
+    }
+
+    const newIpHash = await getClientIpHash(c)
+    
+    // Check if the current IP already has a different contributor
+    const currentContributor = await getContributorByIpHash(newIpHash)
+    
+    // We update the ip_hash of the account associated with the recovery key.
+    // This effectively "moves" the account to the current user's IP.
+    await updateContributorIpHash(contributor.id as number, newIpHash)
+
+    return c.json({
+      success: true,
+      message: `Welcome back, ${contributor.username}!`,
+      username: contributor.username,
+      links_added: parseInt(contributor.links_added as string, 10) || 0
+    })
+  } catch (err) {
+    return c.json({ error: 'Recovery failed' }, 500)
   }
 })
 

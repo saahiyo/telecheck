@@ -55,11 +55,28 @@ export const initDB = async () => {
       id SERIAL PRIMARY KEY,
       ip_hash TEXT UNIQUE NOT NULL,
       username TEXT UNIQUE NOT NULL,
+      recovery_key TEXT UNIQUE NOT NULL,
       links_added INTEGER DEFAULT 0,
       first_seen TIMESTAMP DEFAULT NOW(),
       last_seen TIMESTAMP DEFAULT NOW()
     )
   `
+  // Add recovery_key column to contributors if it doesn't exist (for existing DBs)
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN recovery_key TEXT UNIQUE;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+  // Backfill existing contributors with a random key if null
+  await sql`
+    UPDATE contributors 
+    SET recovery_key = md5(ip_hash || random()::text)
+    WHERE recovery_key IS NULL
+  `
+  // Ensure the column is NOT NULL after backfill
+  await sql`ALTER TABLE contributors ALTER COLUMN recovery_key SET NOT NULL`
+
   // Add contributor_id column to links if it doesn't exist
   await sql`
     DO $$ BEGIN
@@ -144,6 +161,16 @@ async function generateUniqueUsername(): Promise<string> {
   return `${base}${suffix}`
 }
 
+function generateRecoveryKey(): string {
+  // Simple 12-character random hex string
+  const chars = 'abcdef0123456789'
+  let res = ''
+  for (let i = 0; i < 12; i++) {
+    res += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return res
+}
+
 // --------------------------------------------
 // CONTRIBUTORS: Get or create by IP hash
 // --------------------------------------------
@@ -156,11 +183,12 @@ export const getOrCreateContributor = async (ipHash: string) => {
     await sql`UPDATE contributors SET last_seen = NOW() WHERE id = ${existing[0].id}`
     return existing[0]
   }
-  // Create new contributor with unique username
+  // Create new contributor with unique username and recovery key
   const username = await generateUniqueUsername()
+  const recoveryKey = generateRecoveryKey()
   const rows = await sql`
-    INSERT INTO contributors (ip_hash, username)
-    VALUES (${ipHash}, ${username})
+    INSERT INTO contributors (ip_hash, username, recovery_key)
+    VALUES (${ipHash}, ${username}, ${recoveryKey})
     RETURNING *
   `
   return rows[0]
@@ -200,6 +228,17 @@ export const getContributorRank = async (ipHash: string) => {
     WHERE ip_hash = ${ipHash}
   `
   return rows.length > 0 ? parseInt(rows[0].rank as string, 10) : null
+}
+
+export const getContributorByRecoveryKey = async (recoveryKey: string) => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM contributors WHERE recovery_key = ${recoveryKey} LIMIT 1`
+  return rows.length > 0 ? rows[0] : null
+}
+
+export const updateContributorIpHash = async (contributorId: number, newIpHash: string) => {
+  const sql = getDb()
+  await sql`UPDATE contributors SET ip_hash = ${newIpHash} WHERE id = ${contributorId}`
 }
 
 // --------------------------------------------
