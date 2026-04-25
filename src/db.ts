@@ -62,6 +62,14 @@ export const initDB = async () => {
     END $$
   `
 
+  // Add tags column to links if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE links ADD COLUMN tags TEXT[] DEFAULT '{}'::text[];
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+
   // ── Performance indexes ──
   // GIN index for full-text search on url, title, description
   await sql`
