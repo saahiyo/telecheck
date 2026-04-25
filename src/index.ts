@@ -398,7 +398,13 @@ const httpCheck = async (url: string, skipCache = false, contributorId?: number 
   incrementStat('cacheMisses').catch(() => {})
 
   try {
-    const res = await fetch(url, { redirect: "follow" })
+    const res = await fetch(url, { 
+      redirect: "follow",
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(10000) // 10s timeout
+    })
     const html = await res.text()
     const platform = detectPlatform(url)
 
