@@ -539,15 +539,6 @@ app.get('/health', (c) => {
   return c.json({ status: "ok", uptime_ms: Date.now() - startedAt })
 })
 
-// INIT DB (Run migrations)
-app.get('/init-db', async (c) => {
-  try {
-    await initDB()
-    return c.json({ success: true, message: "Database initialized/migrated successfully" })
-  } catch (error: any) {
-    return c.json({ success: false, error: error.message }, 500)
-  }
-})
 
 // API INFO
 app.get('/info', (c) => {
