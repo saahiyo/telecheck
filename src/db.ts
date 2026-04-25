@@ -290,64 +290,38 @@ export const getLinks = async ({
   platform,
   search,
   tag,
+  username,
   limit = 50,
   offset = 0
 }: {
   platform?: string
   search?: string
   tag?: string
+  username?: string
   limit?: number
   offset?: number
 }) => {
   const sql = getDb()
   const pattern = search ? `%${search.trim()}%` : null
   const tagFilter = tag ? tag.trim() : null
+  const usernameFilter = username ? username.trim() : null
 
-  if (platform && pattern) {
-    return sql`
-      SELECT *
-      FROM links
-      WHERE platform = ${platform}
-        AND (
-          url ILIKE ${pattern}
-          OR title ILIKE ${pattern}
-          OR description ILIKE ${pattern}
-        )
-        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-      ORDER BY checked_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `
-  }
+  // Base query with optional join
+  const baseQuery = usernameFilter 
+    ? sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
+    : sql`FROM links l WHERE true`
 
-  if (platform) {
-    return sql`
-      SELECT *
-      FROM links
-      WHERE platform = ${platform}
-        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-      ORDER BY checked_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `
-  }
-
-  if (pattern) {
-    return sql`
-      SELECT *
-      FROM links
-      WHERE (url ILIKE ${pattern}
-        OR title ILIKE ${pattern}
-        OR description ILIKE ${pattern})
-        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-      ORDER BY checked_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `
-  }
+  const platformCond = platform ? sql`AND l.platform = ${platform}` : sql``
+  const searchCond = pattern ? sql`AND (l.url ILIKE ${pattern} OR l.title ILIKE ${pattern} OR l.description ILIKE ${pattern})` : sql``
+  const tagCond = tagFilter ? sql`AND (${tagFilter}::text = ANY(l.tags))` : sql``
 
   return sql`
-    SELECT *
-    FROM links
-    WHERE (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-    ORDER BY checked_at DESC
+    SELECT l.*
+    ${baseQuery}
+    ${platformCond}
+    ${searchCond}
+    ${tagCond}
+    ORDER BY l.checked_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
 }
@@ -373,42 +347,27 @@ export const deleteLinks = async (urls: string[]) => {
 // --------------------------------------------
 // COUNT: Get total stored links (supports search filter)
 // --------------------------------------------
-export const getLinkCount = async (platform?: string, search?: string, tag?: string) => {
+export const getLinkCount = async (platform?: string, search?: string, tag?: string, username?: string) => {
   const sql = getDb()
   const pattern = search ? `%${search.trim()}%` : null
   const tagFilter = tag ? tag.trim() : null
+  const usernameFilter = username ? username.trim() : null
 
-  if (platform && pattern) {
-    const rows = await sql`
-      SELECT COUNT(*) as count FROM links
-      WHERE platform = ${platform}
-        AND (
-          url ILIKE ${pattern}
-          OR title ILIKE ${pattern}
-          OR description ILIKE ${pattern}
-        )
-        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-    `
-    return parseInt(rows[0].count as string, 10)
-  }
+  const baseQuery = usernameFilter 
+    ? sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
+    : sql`FROM links l WHERE true`
 
-  if (platform) {
-    const rows = await sql`SELECT COUNT(*) as count FROM links WHERE platform = ${platform} AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))`
-    return parseInt(rows[0].count as string, 10)
-  }
+  const platformCond = platform ? sql`AND l.platform = ${platform}` : sql``
+  const searchCond = pattern ? sql`AND (l.url ILIKE ${pattern} OR l.title ILIKE ${pattern} OR l.description ILIKE ${pattern})` : sql``
+  const tagCond = tagFilter ? sql`AND (${tagFilter}::text = ANY(l.tags))` : sql``
 
-  if (pattern) {
-    const rows = await sql`
-      SELECT COUNT(*) as count FROM links
-      WHERE (url ILIKE ${pattern}
-        OR title ILIKE ${pattern}
-        OR description ILIKE ${pattern})
-        AND (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))
-    `
-    return parseInt(rows[0].count as string, 10)
-  }
-
-  const rows = await sql`SELECT COUNT(*) as count FROM links WHERE (${tagFilter}::text IS NULL OR ${tagFilter}::text = ANY(tags))`
+  const rows = await sql`
+    SELECT COUNT(*) as count 
+    ${baseQuery}
+    ${platformCond}
+    ${searchCond}
+    ${tagCond}
+  `
   return parseInt(rows[0].count as string, 10)
 }
 

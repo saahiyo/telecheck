@@ -678,6 +678,7 @@ app.get('/links', async (c) => {
   const platform = c.req.query('platform')
   const search = c.req.query('search')
   const tag = c.req.query('tag')
+  const username = c.req.query('username') || c.req.query('user')
   const limitQuery = c.req.query('limit') || '50'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const validate = c.req.query('validate') !== undefined
@@ -694,10 +695,11 @@ app.get('/links', async (c) => {
     platform: platform || undefined,
     search: search || undefined,
     tag: tag || undefined,
+    username: username || undefined,
     limit,
     offset
   })
-  const total = await getLinkCount(platform || undefined, search || undefined, tag || undefined)
+  const total = await getLinkCount(platform || undefined, search || undefined, tag || undefined, username || undefined)
 
   return c.json({
     total,
