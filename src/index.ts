@@ -632,6 +632,9 @@ app.get('/stats', async (c) => {
 // --------------------------------------------
 // REVALIDATE LOGIC (helper)
 // --------------------------------------------
+const REVALIDATION_CONCURRENCY = 4
+const REVALIDATION_RETRY_DELAY_MS = 1200
+
 const runRevalidation = async (platform?: string, limitQuery: string = '50', offset: number = 0) => {
   const isAll = limitQuery.toLowerCase() === 'all'
   const parsedLimit = parseInt(limitQuery, 10)
@@ -646,50 +649,37 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-  const results: RevalidationResultItem[] = []
-  const invalidUrls: string[] = []
-
-  for (let i = 0; i < links.length; i++) {
-    const url = (links[i] as LinkRow).url
-
-    // First attempt
+  const validateStoredLink = async (url: string): Promise<RevalidationResultItem> => {
     const res = await httpCheck(url, { skipCache: true })
 
-    if (res.status === 'valid') {
-      results.push({ url, action: 'kept' as RevalidationAction, status: res.status })
-      // Small delay between checks to avoid rate-limiting
-      if (i < links.length - 1) await delay(300)
-      continue
+    if (res.status === 'valid' || res.status === 'unknown') {
+      return { url, action: 'kept' as RevalidationAction, status: res.status }
     }
 
-    // 'unknown' = network error → keep the link, don't delete
-    if (res.status === 'unknown') {
-      results.push({ url, action: 'kept' as RevalidationAction, status: res.status })
-      if (i < links.length - 1) await delay(300)
-      continue
-    }
-
-    // First check returned 'invalid' or 'expired' — retry once after cooldown
-    // (Telegram rate-limiting often returns pages without tgme_page_title)
-    await delay(2000)
+    await delay(REVALIDATION_RETRY_DELAY_MS)
     const retryRes = await httpCheck(url, { skipCache: true })
 
-    if (retryRes.status === 'valid') {
-      // False positive on first try — keep the link
-      results.push({ url, action: 'kept' as RevalidationAction, status: retryRes.status })
-    } else if (retryRes.status === 'unknown') {
-      // Still can't reach — keep it safe
-      results.push({ url, action: 'kept' as RevalidationAction, status: retryRes.status })
-    } else {
-      // Confirmed invalid/expired on second attempt — safe to delete
-      invalidUrls.push(url)
-      results.push({ url, action: 'deleted' as RevalidationAction, status: retryRes.status })
+    if (retryRes.status === 'valid' || retryRes.status === 'unknown') {
+      return { url, action: 'kept' as RevalidationAction, status: retryRes.status }
     }
 
-    if (i < links.length - 1) await delay(500)
+    return { url, action: 'deleted' as RevalidationAction, status: retryRes.status }
   }
 
-  // Bulk delete all confirmed-invalid links
+  const results: RevalidationResultItem[] = []
+
+  for (let i = 0; i < links.length; i += REVALIDATION_CONCURRENCY) {
+    const chunk = links.slice(i, i + REVALIDATION_CONCURRENCY)
+    const chunkResults = await Promise.all(
+      chunk.map((link) => validateStoredLink((link as LinkRow).url))
+    )
+    results.push(...chunkResults)
+  }
+
+  const invalidUrls = results
+    .filter(r => r.action === 'deleted')
+    .map(r => r.url)
+
   if (invalidUrls.length > 0) {
     await deleteLinks(invalidUrls).catch(() => {})
   }
@@ -706,7 +696,6 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     details: results
   }
 }
-
 // --------------------------------------------
 // STORED LINKS (and optional GET revalidation)
 // --------------------------------------------
