@@ -306,17 +306,22 @@ export const getLinks = async ({
   const tagFilter = tag ? tag.trim() : null
   const usernameFilter = username ? username.trim() : null
 
-  // Base query with optional join
+  // Base query with contributor details when available
   const baseQuery = usernameFilter 
     ? sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
-    : sql`FROM links l WHERE true`
+    : sql`FROM links l LEFT JOIN contributors c ON l.contributor_id = c.id WHERE true`
 
   const platformCond = platform ? sql`AND l.platform = ${platform}` : sql``
   const searchCond = pattern ? sql`AND (l.url ILIKE ${pattern} OR l.title ILIKE ${pattern} OR l.description ILIKE ${pattern})` : sql``
   const tagCond = tagFilter ? sql`AND (${tagFilter}::text = ANY(l.tags))` : sql``
 
   return sql`
-    SELECT l.*
+    SELECT
+      l.*,
+      c.username AS contributor_username,
+      c.links_added AS contributor_links_added,
+      c.first_seen AS contributor_first_seen,
+      c.last_seen AS contributor_last_seen
     ${baseQuery}
     ${platformCond}
     ${searchCond}
