@@ -197,15 +197,13 @@ const shouldRemoveStoredLink = (status: CheckStatus): boolean => {
   return status === 'invalid' || status === 'expired'
 }
 
-const removeStoredLinkIfInvalid = async (url: string, result: CheckResult): Promise<void> => {
+const removeStoredLinkIfInvalid = (url: string, result: CheckResult): void => {
   if (!shouldRemoveStoredLink(result.status)) return
 
-  try {
-    await deleteLinks([url])
-  } catch (error) {
+  deleteLinks([url]).catch((error) => {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[WARN] Failed to remove invalid stored link ${url}:`, message)
-  }
+  })
 }
 
 // --------------------------------------------
@@ -420,7 +418,7 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
     if (cached) {
       incrementStat('cacheHits').catch(() => {})
       if (removeInvalidStored) {
-        await removeStoredLinkIfInvalid(url, cached)
+        removeStoredLinkIfInvalid(url, cached)
       }
       return { ...cached, cached: true }
     }
@@ -457,7 +455,7 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
     if (result.status === 'valid') {
       saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
     } else if (removeInvalidStored) {
-      await removeStoredLinkIfInvalid(url, result)
+      removeStoredLinkIfInvalid(url, result)
     }
 
     setCache(url, result)
