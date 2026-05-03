@@ -97,6 +97,12 @@ type LinkRow = {
   url: string
 }
 
+type HttpCheckOptions = {
+  skipCache?: boolean
+  contributorId?: number | null
+  removeInvalidStored?: boolean
+}
+
 // --------------------------------------------
 // CORS (Allow localhost development)
 // --------------------------------------------
@@ -185,6 +191,21 @@ const getCached = (key: string): CheckResult | null => {
 
 const setCache = (key: string, data: CheckResult): void => {
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL })
+}
+
+const shouldRemoveStoredLink = (status: CheckStatus): boolean => {
+  return status === 'invalid' || status === 'expired'
+}
+
+const removeStoredLinkIfInvalid = async (url: string, result: CheckResult): Promise<void> => {
+  if (!shouldRemoveStoredLink(result.status)) return
+
+  try {
+    await deleteLinks([url])
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[WARN] Failed to remove invalid stored link ${url}:`, message)
+  }
 }
 
 // --------------------------------------------
@@ -386,12 +407,21 @@ const genericCheck = async (_url: string, html: string, httpStatus: number): Pro
 // --------------------------------------------
 // MAIN CHECK ROUTER
 // --------------------------------------------
-const httpCheck = async (url: string, skipCache = false, contributorId?: number | null): Promise<HttpCheckResult> => {
+const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<HttpCheckResult> => {
+  const {
+    skipCache = false,
+    contributorId = null,
+    removeInvalidStored = false
+  } = options
+
   // Check cache first
   if (!skipCache) {
     const cached = getCached(url)
     if (cached) {
       incrementStat('cacheHits').catch(() => {})
+      if (removeInvalidStored) {
+        await removeStoredLinkIfInvalid(url, cached)
+      }
       return { ...cached, cached: true }
     }
   }
@@ -426,6 +456,8 @@ const httpCheck = async (url: string, skipCache = false, contributorId?: number 
     // Save valid links to database (fire & forget)
     if (result.status === 'valid') {
       saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
+    } else if (removeInvalidStored) {
+      await removeStoredLinkIfInvalid(url, result)
     }
 
     setCache(url, result)
@@ -474,7 +506,10 @@ app.get('/', async (c) => {
   } catch {}
 
   const normalized = normalize(link)
-  const result = await httpCheck(normalized, false, contributorId)
+  const result = await httpCheck(normalized, {
+    contributorId,
+    removeInvalidStored: true
+  })
 
   return c.json({
     input: link,
@@ -523,7 +558,10 @@ app.post('/', async (c) => {
 
   const results: BatchResultItem[] = await Promise.all(
     normalized.map(async (url) => {
-      const res = await httpCheck(url, false, contributorId)
+      const res = await httpCheck(url, {
+        contributorId,
+        removeInvalidStored: true
+      })
       return { url, ...res }
     })
   )
@@ -617,7 +655,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     const url = (links[i] as LinkRow).url
 
     // First attempt
-    const res = await httpCheck(url, true)
+    const res = await httpCheck(url, { skipCache: true })
 
     if (res.status === 'valid') {
       results.push({ url, action: 'kept' as RevalidationAction, status: res.status })
@@ -636,7 +674,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     // First check returned 'invalid' or 'expired' — retry once after cooldown
     // (Telegram rate-limiting often returns pages without tgme_page_title)
     await delay(2000)
-    const retryRes = await httpCheck(url, true)
+    const retryRes = await httpCheck(url, { skipCache: true })
 
     if (retryRes.status === 'valid') {
       // False positive on first try — keep the link
