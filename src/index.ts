@@ -103,6 +103,10 @@ type HttpCheckOptions = {
   removeInvalidStored?: boolean
 }
 
+type FetchTargetValidation =
+  | { ok: true; platform: Platform }
+  | { ok: false; platform: Platform; reason: string }
+
 // --------------------------------------------
 // CORS (Allow localhost development)
 // --------------------------------------------
@@ -177,6 +181,9 @@ const startedAt = Date.now()
 // IN-MEMORY CACHE (5 min TTL)
 // --------------------------------------------
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const MAX_URL_LENGTH = 2048
+const MAX_FETCH_BYTES = 1024 * 1024
+const ALLOWED_FETCH_HOSTS = new Set(['t.me', 'telegram.me', 'telegram.org', 'mega.nz', 'mega.co.nz'])
 const cache = new Map<string, CacheEntry>()
 
 const getCached = (key: string): CheckResult | null => {
@@ -209,16 +216,105 @@ const removeStoredLinkIfInvalid = (url: string, result: CheckResult): void => {
 // --------------------------------------------
 // PLATFORM DETECTION
 // --------------------------------------------
+const normalizeHostname = (hostname: string): string => {
+  return hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1').replace(/\.$/, '')
+}
+
 const detectPlatform = (url: string): Platform => {
   try {
     const u = new URL(url)
-    const host = u.hostname.toLowerCase()
+    const host = normalizeHostname(u.hostname)
     if (host === 't.me' || host === 'telegram.me' || host === 'telegram.org') return 'telegram'
     if (host === 'mega.nz' || host === 'mega.co.nz') return 'mega'
     return 'unknown'
   } catch {
     return 'unknown'
   }
+}
+
+const isPrivateHostname = (hostname: string): boolean => {
+  const host = normalizeHostname(hostname)
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return true
+
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (ipv4) {
+    const parts = ipv4.slice(1).map(Number)
+    if (parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true
+    const [a, b] = parts
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 198 && (b === 18 || b === 19))
+    )
+  }
+
+  return host === '::1' || host === '::' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:')
+}
+
+const validateFetchTarget = (url: string): FetchTargetValidation => {
+  const platform = detectPlatform(url)
+
+  if (!url || url.length > MAX_URL_LENGTH) {
+    return { ok: false, platform, reason: 'URL is empty or too long' }
+  }
+
+  try {
+    const parsed = new URL(url)
+    const hostname = normalizeHostname(parsed.hostname)
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { ok: false, platform, reason: 'Unsupported URL protocol' }
+    }
+
+    if (parsed.username || parsed.password) {
+      return { ok: false, platform, reason: 'URL credentials are not allowed' }
+    }
+
+    if (isPrivateHostname(hostname)) {
+      return { ok: false, platform, reason: 'Private or local host is not allowed' }
+    }
+
+    if (!ALLOWED_FETCH_HOSTS.has(hostname) || platform === 'unknown') {
+      return { ok: false, platform, reason: 'Only Telegram and MEGA links are supported' }
+    }
+
+    return { ok: true, platform }
+  } catch {
+    return { ok: false, platform, reason: 'Invalid URL' }
+  }
+}
+
+const readTextWithLimit = async (res: Response): Promise<string> => {
+  const contentLength = Number(res.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > MAX_FETCH_BYTES) {
+    throw new Error('Response body too large')
+  }
+
+  if (!res.body) return res.text()
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let received = 0
+  let text = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    received += value.byteLength
+    if (received > MAX_FETCH_BYTES) {
+      await reader.cancel().catch(() => {})
+      throw new Error('Response body too large')
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+
+  text += decoder.decode()
+  return text
 }
 
 // --------------------------------------------
@@ -230,7 +326,7 @@ const normalize = (input: string) => {
 
   if (s.startsWith("@")) return `https://t.me/${s.slice(1)}`
   if (/^[A-Za-z0-9_]{5,32}$/.test(s)) return `https://t.me/${s}`
-  if (!s.startsWith("http")) s = "https://" + s
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s
 
   return s
 }
@@ -412,6 +508,14 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
     removeInvalidStored = false
   } = options
 
+  const target = validateFetchTarget(url)
+  if (!target.ok) {
+    incrementStat('invalid').catch(() => {})
+    const result: CheckResult = { status: "invalid", platform: target.platform, metadata: null }
+    if (removeInvalidStored) removeStoredLinkIfInvalid(url, result)
+    return { ...result, cached: false }
+  }
+
   // Check cache first
   if (!skipCache) {
     const cached = getCached(url)
@@ -433,8 +537,8 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
       },
       signal: AbortSignal.timeout(10000) // 10s timeout
     })
-    const html = await res.text()
-    const platform = detectPlatform(url)
+    const html = await readTextWithLimit(res)
+    const platform = target.platform
 
     incrementStat('totalChecks').catch(() => {})
 
