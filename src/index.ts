@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity } from './db.js'
 
 const app = new Hono()
 
@@ -984,12 +984,14 @@ app.get('/contributors/me', async (c) => {
       return c.json({ username: null, links_added: 0, rank: null })
     }
 
-    const rank = await getContributorRankById(contributor.id as number)
+    const contributorId = contributor.id as number
+    const rank = await getContributorRankById(contributorId)
+    const activeLinksCount = await getContributorActiveLinkCount(contributorId)
 
     return c.json({
       username: contributor.username,
       recovery_key: contributor.recovery_key,
-      links_added: parseInt(contributor.links_added as string, 10) || 0,
+      links_added: activeLinksCount,
       rank,
       first_seen: contributor.first_seen,
       last_seen: contributor.last_seen
@@ -1021,12 +1023,14 @@ app.post('/contributors/recover', async (c) => {
       identity.deviceId
     )
 
+    const activeLinksCount = await getContributorActiveLinkCount(updatedContributor.id as number)
+
     return c.json({
       success: true,
       message: `Welcome back, ${updatedContributor.username}!`,
       username: updatedContributor.username,
       recovery_key: updatedContributor.recovery_key,
-      links_added: parseInt(updatedContributor.links_added as string, 10) || 0
+      links_added: activeLinksCount
     })
   } catch (err) {
     return c.json({ error: 'Recovery failed' }, 500)

@@ -124,6 +124,11 @@ export const initDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_links_platform_checked
     ON links (platform, checked_at DESC)
   `
+  // Index for live contributor counts used by leaderboard/profile views
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_contributor_status
+    ON links (contributor_id, status)
+  `
   // Index on contributors for leaderboard sorting
   await sql`
     CREATE INDEX IF NOT EXISTS idx_contributors_links_added
@@ -288,17 +293,40 @@ export const getContributorByDeviceId = async (deviceId: string) => {
 export const getContributorLeaderboard = async (limit = 20, offset = 0) => {
   const sql = getDb()
   return sql`
-    SELECT username, links_added, first_seen, last_seen
-    FROM contributors
-    WHERE links_added > 0
-    ORDER BY links_added DESC, first_seen ASC
+    SELECT
+      c.username,
+      COUNT(l.id) AS links_added,
+      c.first_seen,
+      c.last_seen
+    FROM contributors c
+    JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+    GROUP BY c.id, c.username, c.first_seen, c.last_seen
+    ORDER BY COUNT(l.id) DESC, c.first_seen ASC
     LIMIT ${limit} OFFSET ${offset}
   `
 }
 
 export const getContributorCount = async () => {
   const sql = getDb()
-  const rows = await sql`SELECT COUNT(*) as count FROM contributors WHERE links_added > 0`
+  const rows = await sql`
+    SELECT COUNT(*) as count
+    FROM (
+      SELECT c.id
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      GROUP BY c.id
+    ) active_contributors
+  `
+  return parseInt(rows[0].count as string, 10)
+}
+
+export const getContributorActiveLinkCount = async (contributorId: number) => {
+  const sql = getDb()
+  const rows = await sql`
+    SELECT COUNT(*) as count
+    FROM links
+    WHERE contributor_id = ${contributorId} AND status = 'valid'
+  `
   return parseInt(rows[0].count as string, 10)
 }
 
@@ -306,9 +334,12 @@ export const getContributorRank = async (ipHash: string) => {
   const sql = getDb()
   const rows = await sql`
     SELECT rank FROM (
-      SELECT ip_hash, RANK() OVER (ORDER BY links_added DESC, first_seen ASC) as rank
-      FROM contributors
-      WHERE links_added > 0
+      SELECT
+        c.ip_hash,
+        RANK() OVER (ORDER BY COUNT(l.id) DESC, c.first_seen ASC) as rank
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      GROUP BY c.id, c.ip_hash, c.first_seen
     ) ranked
     WHERE ip_hash = ${ipHash}
   `
@@ -319,9 +350,12 @@ export const getContributorRankById = async (contributorId: number) => {
   const sql = getDb()
   const rows = await sql`
     SELECT rank FROM (
-      SELECT id, RANK() OVER (ORDER BY links_added DESC, first_seen ASC) as rank
-      FROM contributors
-      WHERE links_added > 0
+      SELECT
+        c.id,
+        RANK() OVER (ORDER BY COUNT(l.id) DESC, c.first_seen ASC) as rank
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      GROUP BY c.id, c.first_seen
     ) ranked
     WHERE id = ${contributorId}
   `
@@ -415,7 +449,12 @@ export const getLinks = async ({
     SELECT
       l.*,
       c.username AS contributor_username,
-      c.links_added AS contributor_links_added,
+      (
+        SELECT COUNT(*)
+        FROM links contributor_links
+        WHERE contributor_links.contributor_id = c.id
+          AND contributor_links.status = 'valid'
+      ) AS contributor_links_added,
       c.first_seen AS contributor_first_seen,
       c.last_seen AS contributor_last_seen
     ${baseQuery}
