@@ -54,6 +54,7 @@ export const initDB = async () => {
     CREATE TABLE IF NOT EXISTS contributors (
       id SERIAL PRIMARY KEY,
       ip_hash TEXT UNIQUE NOT NULL,
+      device_id TEXT,
       username TEXT UNIQUE NOT NULL,
       recovery_key TEXT UNIQUE NOT NULL,
       links_added INTEGER DEFAULT 0,
@@ -76,6 +77,14 @@ export const initDB = async () => {
   `
   // Ensure the column is NOT NULL after backfill
   await sql`ALTER TABLE contributors ALTER COLUMN recovery_key SET NOT NULL`
+
+  // Add stable browser/device identity column if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN device_id TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
 
   // Add contributor_id column to links if it doesn't exist
   await sql`
@@ -119,6 +128,12 @@ export const initDB = async () => {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_contributors_links_added
     ON contributors (links_added DESC)
+  `
+  // Unique index for stable browser/device identity when available
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_device_id
+    ON contributors (device_id)
+    WHERE device_id IS NOT NULL
   `
 
   console.log('✅ Database initialized — tables + indexes ready')
@@ -172,23 +187,87 @@ function generateRecoveryKey(): string {
 }
 
 // --------------------------------------------
-// CONTRIBUTORS: Get or create by IP hash
+// CONTRIBUTORS: Resolve by recovery key, device ID, then IP hash
 // --------------------------------------------
-export const getOrCreateContributor = async (ipHash: string) => {
+export type ContributorIdentityInput = {
+  ipHash: string
+  deviceId?: string | null
+  recoveryKey?: string | null
+}
+
+const cleanOptionalIdentity = (value?: string | null): string | null => {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+export const updateContributorIdentity = async (
+  contributorId: number,
+  ipHash: string,
+  deviceId?: string | null
+) => {
   const sql = getDb()
-  // Check if contributor exists
-  const existing = await sql`SELECT * FROM contributors WHERE ip_hash = ${ipHash} LIMIT 1`
-  if (existing.length > 0) {
-    // Update last_seen
-    await sql`UPDATE contributors SET last_seen = NOW() WHERE id = ${existing[0].id}`
-    return existing[0]
+  const cleanDeviceId = cleanOptionalIdentity(deviceId)
+
+  await sql`UPDATE contributors SET last_seen = NOW() WHERE id = ${contributorId}`
+
+  const ipConflict = await sql`SELECT id FROM contributors WHERE ip_hash = ${ipHash} AND id <> ${contributorId} LIMIT 1`
+  if (ipConflict.length === 0) {
+    await sql`UPDATE contributors SET ip_hash = ${ipHash} WHERE id = ${contributorId}`
   }
-  // Create new contributor with unique username and recovery key
+
+  if (cleanDeviceId) {
+    const deviceConflict = await sql`SELECT id FROM contributors WHERE device_id = ${cleanDeviceId} AND id <> ${contributorId} LIMIT 1`
+    if (deviceConflict.length === 0) {
+      await sql`UPDATE contributors SET device_id = ${cleanDeviceId} WHERE id = ${contributorId}`
+    }
+  }
+
+  const rows = await sql`SELECT * FROM contributors WHERE id = ${contributorId} LIMIT 1`
+  return rows[0]
+}
+
+export const getContributorByIdentity = async (identity: ContributorIdentityInput) => {
+  const sql = getDb()
+  const deviceId = cleanOptionalIdentity(identity.deviceId)
+  const recoveryKey = cleanOptionalIdentity(identity.recoveryKey)
+
+  if (recoveryKey) {
+    const rows = await sql`SELECT * FROM contributors WHERE recovery_key = ${recoveryKey} LIMIT 1`
+    if (rows.length > 0) {
+      return updateContributorIdentity(rows[0].id as number, identity.ipHash, deviceId)
+    }
+  }
+
+  if (deviceId) {
+    const rows = await sql`SELECT * FROM contributors WHERE device_id = ${deviceId} LIMIT 1`
+    if (rows.length > 0) {
+      return updateContributorIdentity(rows[0].id as number, identity.ipHash, deviceId)
+    }
+  }
+
+  const rows = await sql`SELECT * FROM contributors WHERE ip_hash = ${identity.ipHash} LIMIT 1`
+  if (rows.length > 0) {
+    return updateContributorIdentity(rows[0].id as number, identity.ipHash, deviceId)
+  }
+
+  return null
+}
+
+export const getOrCreateContributor = async (identity: string | ContributorIdentityInput) => {
+  const input: ContributorIdentityInput = typeof identity === 'string'
+    ? { ipHash: identity }
+    : identity
+  const deviceId = cleanOptionalIdentity(input.deviceId)
+
+  const existing = await getContributorByIdentity(input)
+  if (existing) return existing
+
+  const sql = getDb()
   const username = await generateUniqueUsername()
   const recoveryKey = generateRecoveryKey()
   const rows = await sql`
-    INSERT INTO contributors (ip_hash, username, recovery_key)
-    VALUES (${ipHash}, ${username}, ${recoveryKey})
+    INSERT INTO contributors (ip_hash, device_id, username, recovery_key)
+    VALUES (${input.ipHash}, ${deviceId}, ${username}, ${recoveryKey})
     RETURNING *
   `
   return rows[0]
@@ -197,6 +276,12 @@ export const getOrCreateContributor = async (ipHash: string) => {
 export const getContributorByIpHash = async (ipHash: string) => {
   const sql = getDb()
   const rows = await sql`SELECT * FROM contributors WHERE ip_hash = ${ipHash} LIMIT 1`
+  return rows.length > 0 ? rows[0] : null
+}
+
+export const getContributorByDeviceId = async (deviceId: string) => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM contributors WHERE device_id = ${deviceId} LIMIT 1`
   return rows.length > 0 ? rows[0] : null
 }
 
@@ -230,6 +315,19 @@ export const getContributorRank = async (ipHash: string) => {
   return rows.length > 0 ? parseInt(rows[0].rank as string, 10) : null
 }
 
+export const getContributorRankById = async (contributorId: number) => {
+  const sql = getDb()
+  const rows = await sql`
+    SELECT rank FROM (
+      SELECT id, RANK() OVER (ORDER BY links_added DESC, first_seen ASC) as rank
+      FROM contributors
+      WHERE links_added > 0
+    ) ranked
+    WHERE id = ${contributorId}
+  `
+  return rows.length > 0 ? parseInt(rows[0].rank as string, 10) : null
+}
+
 export const getContributorByRecoveryKey = async (recoveryKey: string) => {
   const sql = getDb()
   const rows = await sql`SELECT * FROM contributors WHERE recovery_key = ${recoveryKey} LIMIT 1`
@@ -237,10 +335,8 @@ export const getContributorByRecoveryKey = async (recoveryKey: string) => {
 }
 
 export const updateContributorIpHash = async (contributorId: number, newIpHash: string) => {
-  const sql = getDb()
-  await sql`UPDATE contributors SET ip_hash = ${newIpHash} WHERE id = ${contributorId}`
+  await updateContributorIdentity(contributorId, newIpHash)
 }
-
 // --------------------------------------------
 // SAVE: Insert or update a valid link
 // --------------------------------------------

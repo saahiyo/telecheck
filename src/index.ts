@@ -1,9 +1,20 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIpHash, getContributorRank, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIpHash } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity } from './db.js'
 
 const app = new Hono()
+
+let dbInitPromise: Promise<void> | null = null
+const ensureDbReady = async () => {
+  if (!dbInitPromise) {
+    dbInitPromise = initDB().catch((error) => {
+      dbInitPromise = null
+      throw error
+    })
+  }
+  await dbInitPromise
+}
 
 // Request Logging
 app.use('*', logger())
@@ -77,7 +88,14 @@ type CacheEntry = {
   expiresAt: number
 }
 
-type BatchRequestBody = {
+type ContributorIdentityPayload = {
+  contributor_id?: unknown
+  device_id?: unknown
+  recovery_key?: unknown
+  contributor_username?: unknown
+}
+
+type BatchRequestBody = ContributorIdentityPayload & {
   links?: unknown
 }
 
@@ -149,6 +167,40 @@ const getClientIp = (c: any): string => {
 const getClientIpHash = async (c: any): Promise<string> => {
   const ip = getClientIp(c)
   return hashIp(ip)
+}
+
+const getIdentityValue = (value: unknown, maxLength = 128): string | null => {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > maxLength) return null
+  return trimmed
+}
+
+const getContributorIdentityInput = async (c: any, body?: ContributorIdentityPayload) => {
+  const deviceId =
+    getIdentityValue(body?.device_id) ||
+    getIdentityValue(body?.contributor_id) ||
+    getIdentityValue(c.req.query('device_id')) ||
+    getIdentityValue(c.req.query('contributor_id'))
+  const recoveryKey = getIdentityValue(body?.recovery_key) || getIdentityValue(c.req.query('recovery_key'))
+
+  return {
+    ipHash: await getClientIpHash(c),
+    deviceId,
+    recoveryKey
+  }
+}
+
+const resolveContributor = async (c: any, body?: ContributorIdentityPayload) => {
+  await ensureDbReady()
+  const identity = await getContributorIdentityInput(c, body)
+  return getOrCreateContributor(identity)
+}
+
+const findContributorForRequest = async (c: any) => {
+  await ensureDbReady()
+  const identity = await getContributorIdentityInput(c)
+  return getContributorByIdentity(identity)
 }
 
 // --------------------------------------------
@@ -599,11 +651,10 @@ app.get('/', async (c) => {
     })
   }
 
-  // Resolve contributor from IP
+  // Resolve contributor from stable browser identity first, then IP fallback
   let contributorId: number | null = null
   try {
-    const ipHash = await getClientIpHash(c)
-    const contributor = await getOrCreateContributor(ipHash)
+    const contributor = await resolveContributor(c)
     contributorId = contributor.id as number
   } catch {}
 
@@ -641,11 +692,10 @@ app.post('/', async (c) => {
     return c.json({ error: "Provide { links: [...] }" }, 400)
   }
 
-  // Resolve contributor from IP
+  // Resolve contributor from stable browser identity first, then IP fallback
   let contributorId: number | null = null
   try {
-    const ipHash = await getClientIpHash(c)
-    const contributor = await getOrCreateContributor(ipHash)
+    const contributor = await resolveContributor(c, body)
     contributorId = contributor.id as number
   } catch {}
 
@@ -925,17 +975,16 @@ app.get('/contributors', async (c) => {
   })
 })
 
-// CURRENT USER'S PROFILE (matched by IP hash)
+// CURRENT USER'S PROFILE (matched by recovery key, device ID, then IP hash)
 app.get('/contributors/me', async (c) => {
   try {
-    const ipHash = await getClientIpHash(c)
-    const contributor = await getContributorByIpHash(ipHash)
+    const contributor = await findContributorForRequest(c)
 
     if (!contributor) {
       return c.json({ username: null, links_added: 0, rank: null })
     }
 
-    const rank = await getContributorRank(ipHash)
+    const rank = await getContributorRankById(contributor.id as number)
 
     return c.json({
       username: contributor.username,
@@ -953,30 +1002,31 @@ app.get('/contributors/me', async (c) => {
 // RECOVER ACCOUNT VIA KEY
 app.post('/contributors/recover', async (c) => {
   try {
-    const { recovery_key } = await c.req.json<{ recovery_key: string }>()
-    if (!recovery_key) {
+    const body = await c.req.json<ContributorIdentityPayload>()
+    const recoveryKey = getIdentityValue(body.recovery_key)
+    if (!recoveryKey) {
       return c.json({ error: 'Recovery key is required' }, 400)
     }
 
-    const contributor = await getContributorByRecoveryKey(recovery_key)
+    await ensureDbReady()
+    const contributor = await getContributorByRecoveryKey(recoveryKey)
     if (!contributor) {
       return c.json({ error: 'Invalid recovery key' }, 404)
     }
 
-    const newIpHash = await getClientIpHash(c)
-    
-    // Check if the current IP already has a different contributor
-    const currentContributor = await getContributorByIpHash(newIpHash)
-    
-    // We update the ip_hash of the account associated with the recovery key.
-    // This effectively "moves" the account to the current user's IP.
-    await updateContributorIpHash(contributor.id as number, newIpHash)
+    const identity = await getContributorIdentityInput(c, body)
+    const updatedContributor = await updateContributorIdentity(
+      contributor.id as number,
+      identity.ipHash,
+      identity.deviceId
+    )
 
     return c.json({
       success: true,
-      message: `Welcome back, ${contributor.username}!`,
-      username: contributor.username,
-      links_added: parseInt(contributor.links_added as string, 10) || 0
+      message: `Welcome back, ${updatedContributor.username}!`,
+      username: updatedContributor.username,
+      recovery_key: updatedContributor.recovery_key,
+      links_added: parseInt(updatedContributor.links_added as string, 10) || 0
     })
   } catch (err) {
     return c.json({ error: 'Recovery failed' }, 500)
