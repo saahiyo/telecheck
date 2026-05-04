@@ -103,11 +103,23 @@ export const initDB = async () => {
   `
 
   // ── Performance indexes ──
-  // GIN index for full-text search on url, title, description
+  // Trigram indexes match the substring ILIKE search used by getLinks/getLinkCount.
+  await sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`
+  await sql`DROP INDEX IF EXISTS idx_links_search`
   await sql`
-    CREATE INDEX IF NOT EXISTS idx_links_search
+    CREATE INDEX IF NOT EXISTS idx_links_url_trgm
     ON links
-    USING GIN (to_tsvector('english', coalesce(url,'') || ' ' || coalesce(title,'') || ' ' || coalesce(description,'')))
+    USING GIN (url gin_trgm_ops)
+  `
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_title_trgm
+    ON links
+    USING GIN (title gin_trgm_ops)
+  `
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_links_description_trgm
+    ON links
+    USING GIN (description gin_trgm_ops)
   `
   // B-tree index on platform for filtered queries
   await sql`
