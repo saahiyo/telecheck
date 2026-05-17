@@ -1,3 +1,6 @@
+import dotenv from 'dotenv'
+dotenv.config({ path: '.env.local' })
+
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
@@ -567,8 +570,8 @@ const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResu
         break
     }
 
-    // Cache in Redis (fire & forget)
-    setInCache(url, result).catch(() => {})
+    // Cache in Redis (must await — fire-and-forget may not complete in serverless)
+    await setInCache(url, result)
     return result
 
   } catch {
@@ -671,14 +674,29 @@ app.get('/', async (c) => {
     }, 429)
   }
 
-  // Resolve contributor from stable browser identity first, then IP fallback
+  const normalized = normalize(link)
+
+  // ── Fast path: return cached result WITHOUT touching DB ──
+  const cached = await getFromCache(normalized)
+  if (cached) {
+    incrementRedisStat('cacheHits').catch(() => {})
+    return c.json({
+      input: link,
+      normalized,
+      ...cached,
+      cached: true,
+      credits: "@saahiyo",
+      responseTime: Date.now() - start
+    })
+  }
+
+  // ── Cache miss: full check with contributor + DB ──
   let contributorId: number | null = null
   try {
     const contributor = await resolveContributor(c)
     contributorId = contributor.id as number
   } catch {}
 
-  const normalized = normalize(link)
   const result = await httpCheck(normalized, {
     contributorId,
     removeInvalidStored: true
@@ -828,13 +846,15 @@ app.get('/stats', async (c) => {
 // REVALIDATE LOGIC (helper)
 // --------------------------------------------
 const REVALIDATION_CONCURRENCY = 4
-const REVALIDATION_RETRY_DELAY_MS = 1200
+const REVALIDATION_RETRY_DELAY_MS = 800
+const REVALIDATION_MAX_LINKS = 100 // Max links to fetch from DB per call
+const REVALIDATION_DEADLINE_MS = 25_000 // Hard time limit (25s — safely under Vercel timeout)
 
 const runRevalidation = async (platform?: string, limitQuery: string = '50', offset: number = 0) => {
   const isAll = limitQuery.toLowerCase() === 'all'
   const parsedLimit = parseInt(limitQuery, 10)
   const numericLimit = Number.isNaN(parsedLimit) ? 50 : parsedLimit
-  const limit = isAll ? 100000 : Math.min(Math.max(numericLimit, 1), 100000)
+  const limit = isAll ? REVALIDATION_MAX_LINKS : Math.min(Math.max(numericLimit, 1), REVALIDATION_MAX_LINKS)
 
   const links = await getLinks({ platform: platform || undefined, limit, offset })
   
@@ -842,6 +862,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
     return { message: "No links found to validate", processed: 0 }
   }
 
+  const deadline = Date.now() + REVALIDATION_DEADLINE_MS
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   const validateStoredLink = async (url: string): Promise<RevalidationResultItem> => {
@@ -851,24 +872,35 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
       return { url, action: 'kept' as RevalidationAction, status: res.status }
     }
 
-    await delay(REVALIDATION_RETRY_DELAY_MS)
-    const retryRes = await httpCheck(url, { skipCache: true })
+    // Only retry if we still have time
+    if (Date.now() + REVALIDATION_RETRY_DELAY_MS + 10000 < deadline) {
+      await delay(REVALIDATION_RETRY_DELAY_MS)
+      const retryRes = await httpCheck(url, { skipCache: true })
 
-    if (retryRes.status === 'valid' || retryRes.status === 'unknown') {
-      return { url, action: 'kept' as RevalidationAction, status: retryRes.status }
+      if (retryRes.status === 'valid' || retryRes.status === 'unknown') {
+        return { url, action: 'kept' as RevalidationAction, status: retryRes.status }
+      }
+
+      return { url, action: 'deleted' as RevalidationAction, status: retryRes.status }
     }
 
-    return { url, action: 'deleted' as RevalidationAction, status: retryRes.status }
+    // Not enough time for retry — mark as deleted based on first check
+    return { url, action: 'deleted' as RevalidationAction, status: res.status }
   }
 
   const results: RevalidationResultItem[] = []
+  let processedIndex = 0
 
   for (let i = 0; i < links.length; i += REVALIDATION_CONCURRENCY) {
+    // Check deadline before starting a new batch
+    if (Date.now() >= deadline) break
+
     const chunk = links.slice(i, i + REVALIDATION_CONCURRENCY)
     const chunkResults = await Promise.all(
       chunk.map((link) => validateStoredLink((link as LinkRow).url))
     )
     results.push(...chunkResults)
+    processedIndex = i + chunk.length
   }
 
   const invalidUrls = results
@@ -883,11 +915,16 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
   const deleted = results.filter(r => r.action === "deleted")
   const unknown = results.filter(r => r.status === "unknown")
 
+  const hasMore = processedIndex < links.length || (isAll && links.length === limit)
+
   return {
     processed: results.length,
+    total_fetched: links.length,
     kept: kept.length,
     deleted: deleted.length,
     skipped: unknown.length,
+    timed_out: processedIndex < links.length,
+    ...(hasMore ? { nextOffset: offset + processedIndex } : {}),
     details: results
   }
 }
@@ -904,6 +941,21 @@ app.get('/links', async (c) => {
   const validate = c.req.query('validate') !== undefined
 
   if (validate) {
+    // Rate limit revalidation — same protection as /links/validate
+    const ip = getClientIp(c)
+    const rl = await checkRateLimit(ip, 'validate')
+    if (rl.limit) {
+      c.header('X-RateLimit-Limit', rl.limit.toString())
+      c.header('X-RateLimit-Remaining', rl.remaining.toString())
+      c.header('X-RateLimit-Reset', rl.reset.toString())
+    }
+    if (!rl.allowed) {
+      return c.json({
+        error: 'Too many requests. Revalidation is a heavy operation.',
+        retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+      }, 429)
+    }
+
     const result = await runRevalidation(platform || undefined, limitQuery, offset)
     return c.json(result)
   }

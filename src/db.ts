@@ -17,6 +17,26 @@ const getDb = () => {
 // --------------------------------------------
 export const initDB = async () => {
   const sql = getDb()
+
+  // Fast schema check — if the latest migration marker exists, skip all DDL.
+  // This turns a 15-query cold start into a single lightweight query.
+  try {
+    const check = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'links' AND column_name = 'tags'
+      ) as ready
+    `
+    if (check[0]?.ready) {
+      return // Schema is up to date — nothing to do
+    }
+  } catch {
+    // Schema doesn't exist at all — fall through to full init
+  }
+
+  // ── Full schema init (runs only once per database) ──
+  console.log('🔨 Creating database schema...')
+
   await sql`
     CREATE TABLE IF NOT EXISTS links (
       id SERIAL PRIMARY KEY,
