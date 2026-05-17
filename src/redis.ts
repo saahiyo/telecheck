@@ -195,6 +195,25 @@ export const incrementRedisStat = async (key: string, amount = 1): Promise<void>
   }
 }
 
+/**
+ * Check if a URL has already been counted for stats in the last 24 hours.
+ * Uses a Redis key per URL with a 24-hour TTL (86400 seconds).
+ * Returns true if this is a NEW (unique) URL in the last 24h, false if already counted.
+ */
+export const isUniqueCheck24h = async (url: string): Promise<boolean> => {
+  if (!isRedisConfigured()) return true // If no Redis, always count (fallback)
+  try {
+    const redis = getRedis()
+    const key = `tc:dedup:24h:${url}`
+    // SET with NX (only set if not exists) and EX 86400 (24 hours)
+    // returns "OK" if set successfully (unique), null if already existed
+    const result = await redis.set(key, '1', { nx: true, ex: 86400 })
+    return result === 'OK'
+  } catch {
+    return true // Fail open — count it if Redis errors
+  }
+}
+
 export const getRedisStats = async (): Promise<Record<string, number>> => {
   if (!isRedisConfigured()) return {}
   try {

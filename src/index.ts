@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity, createJob, getJob, updateJobProgress, completeJob } from './db.js'
-import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured, publishBatchJob, isQStashConfigured, QStashBatchMessage } from './redis.js'
+import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured, publishBatchJob, isQStashConfigured, isUniqueCheck24h, QStashBatchMessage } from './redis.js'
 
 const app = new Hono()
 
@@ -415,8 +415,6 @@ const extractPageTitle = (html: string): string | null => {
 // --------------------------------------------
 const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckResult> => {
   if (html.includes("tgme_page_title")) {
-    incrementStat('valid').catch(() => {})
-
     const title = extractText(html, 'tgme_page_title')
     const description = extractText(html, 'tgme_page_description')
     const extra = extractText(html, 'tgme_page_extra')
@@ -450,7 +448,6 @@ const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckR
     }
   }
 
-  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "telegram" as const, metadata: null }
 }
 
@@ -479,7 +476,6 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
   const isExpired = title && genericTitles.includes(title.toLowerCase()) && !description
 
   if (isExpired) {
-    incrementStat('invalid').catch(() => {})
     return {
       status: "expired",
       platform: "mega" as const,
@@ -495,7 +491,6 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
 
   // If we got a meaningful title, treat as valid
   if (title || httpStatus === 200) {
-    incrementStat('valid').catch(() => {})
     return {
       status: "valid",
       platform: "mega" as const,
@@ -509,7 +504,6 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
     }
   }
 
-  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "mega" as const, metadata: null }
 }
 
@@ -523,7 +517,6 @@ const genericCheck = async (_url: string, html: string, httpStatus: number): Pro
   const siteName = extractMeta(html, 'og:site_name')
 
   if (title || httpStatus === 200) {
-    incrementStat('valid').catch(() => {})
     return {
       status: "valid",
       platform: "unknown" as const,
@@ -536,7 +529,6 @@ const genericCheck = async (_url: string, html: string, httpStatus: number): Pro
     }
   }
 
-  incrementStat('invalid').catch(() => {})
   return { status: "invalid", platform: "unknown" as const, metadata: null }
 }
 
@@ -554,9 +546,6 @@ const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResu
     })
     const html = await readTextWithLimit(res)
 
-    incrementStat('totalChecks').catch(() => {})
-    incrementRedisStat('totalChecks').catch(() => {})
-
     let result: CheckResult
     switch (platform) {
       case 'telegram':
@@ -570,13 +559,27 @@ const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResu
         break
     }
 
+    // Only increment stats for unique URLs (not repeated checks in 24h)
+    const isUnique = await isUniqueCheck24h(url)
+    if (isUnique) {
+      incrementStat('totalChecks').catch(() => {})
+      incrementRedisStat('totalChecks').catch(() => {})
+      const statKey = result.status === 'valid' ? 'valid' : result.status === 'invalid' || result.status === 'expired' ? 'invalid' : 'unknown'
+      incrementStat(statKey).catch(() => {})
+      incrementRedisStat(statKey).catch(() => {})
+    }
+
     // Cache in Redis (must await — fire-and-forget may not complete in serverless)
     await setInCache(url, result)
     return result
 
   } catch {
-    incrementStat('unknown').catch(() => {})
-    incrementRedisStat('unknown').catch(() => {})
+    // For errors, still dedup — don't double-count retries
+    const isUnique = await isUniqueCheck24h(url)
+    if (isUnique) {
+      incrementStat('unknown').catch(() => {})
+      incrementRedisStat('unknown').catch(() => {})
+    }
     return { status: "unknown", platform, metadata: null }
   }
 }
@@ -593,8 +596,12 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
 
   const target = validateFetchTarget(url)
   if (!target.ok) {
-    incrementStat('invalid').catch(() => {})
-    incrementRedisStat('invalid').catch(() => {})
+    // Only count invalid URL format for unique URLs in 24h
+    const isUnique = await isUniqueCheck24h(url)
+    if (isUnique) {
+      incrementStat('invalid').catch(() => {})
+      incrementRedisStat('invalid').catch(() => {})
+    }
     const result: CheckResult = { status: "invalid", platform: target.platform, metadata: null }
     if (removeInvalidStored) removeStoredLinkIfInvalid(url, result)
     return { ...result, cached: false }
