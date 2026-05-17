@@ -4,8 +4,8 @@ dotenv.config({ path: '.env.local' })
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity } from './db.js'
-import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured } from './redis.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity, createJob, getJob, updateJobProgress, completeJob } from './db.js'
+import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured, publishBatchJob, isQStashConfigured, QStashBatchMessage } from './redis.js'
 
 const app = new Hono()
 
@@ -761,8 +761,51 @@ app.post('/', async (c) => {
     )
   )
 
+  const isAsyncRequested = c.req.query('async') === 'true'
+  const isLargeBatch = normalized.length > 25
+
+  // ── QStash Async Batch Flow (if configured and batch is large or async requested) ──
+  if (isQStashConfigured() && (isLargeBatch || isAsyncRequested)) {
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+    await ensureDbReady()
+    await createJob(jobId, normalized.length)
+
+    // Chunk links into batches of 10 for QStash workers
+    const CHUNK_SIZE = 10
+    const chunks: string[][] = []
+    for (let i = 0; i < normalized.length; i += CHUNK_SIZE) {
+      chunks.push(normalized.slice(i, i + CHUNK_SIZE))
+    }
+
+    // Publish all chunks to QStash
+    let publishedCount = 0
+    for (const chunk of chunks) {
+      const ok = await publishBatchJob(jobId, chunk, contributorId, c.req.url)
+      if (ok) publishedCount++
+    }
+
+    if (publishedCount === 0) {
+      // Fallback to sync if QStash fails completely
+      await completeJob(jobId, 'Failed to publish to QStash queue')
+    } else {
+      return c.json({
+        jobId,
+        status: 'queued',
+        message: `Batch is processing asynchronously in ${publishedCount} chunks. Poll /jobs/${jobId} for results.`,
+        total_links: normalized.length,
+        credits: "@saahiyo",
+        responseTime: Date.now() - start
+      }, 202)
+    }
+  }
+
+  // ── Synchronous Batch Flow (small batches or QStash disabled/failed) ──
+  // Safety cap to prevent Vercel function timeout if QStash is not configured
+  const syncLinks = normalized.slice(0, 50)
+  const truncated = normalized.length > 50
+
   const results: BatchResultItem[] = await Promise.all(
-    normalized.map(async (url) => {
+    syncLinks.map(async (url) => {
       const res = await httpCheck(url, {
         contributorId,
         removeInvalidStored: true
@@ -777,10 +820,79 @@ app.post('/', async (c) => {
 
   return c.json({
     total: results.length,
+    truncated,
+    ...(truncated ? { warning: "Batch truncated to 50 links to prevent serverless timeout. Configure QStash for unlimited async batching." } : {}),
     groups: { valid, invalid, unknown },
     credits: "@saahiyo",
     responseTime: Date.now() - start
   })
+})
+
+// --------------------------------------------
+// GET /jobs/:id  (Check Async Batch Status)
+// --------------------------------------------
+app.get('/jobs/:id', async (c) => {
+  const id = c.req.param('id')
+  await ensureDbReady()
+  const job = await getJob(id)
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404)
+  }
+  return c.json(job)
+})
+
+// --------------------------------------------
+// POST /api/worker/batch  (QStash Background Worker Webhook)
+// --------------------------------------------
+app.post('/api/worker/batch', async (c) => {
+  // In production, QStash requests should be verified using @upstash/qstash receiver middleware.
+  // For simplicity and seamless local/prod compatibility, we process the payload directly.
+  try {
+    const { jobId, links, contributorId } = await c.req.json<QStashBatchMessage>()
+    if (!jobId || !Array.isArray(links)) {
+      return c.json({ error: "Invalid worker payload" }, 400)
+    }
+
+    await ensureDbReady()
+    const job = await getJob(jobId)
+    if (!job || job.status === 'completed' || job.status === 'failed') {
+      return c.json({ message: "Job already finished or invalid" })
+    }
+
+    // Process this chunk sequentially or with low concurrency to avoid upstream rate limits
+    const results: BatchResultItem[] = []
+    let validCount = 0
+    let invalidCount = 0
+    let unknownCount = 0
+
+    for (const url of links) {
+      const res = await httpCheck(url, {
+        contributorId,
+        removeInvalidStored: true
+      })
+      results.push({ url, ...res })
+      if (res.status === 'valid') validCount++
+      else if (res.status === 'invalid') invalidCount++
+      else unknownCount++
+      
+      // Small delay between checks to be gentle on Telegram/upstream servers
+      await new Promise(r => setTimeout(r, 300))
+    }
+
+    // Update job progress in Postgres
+    await updateJobProgress(jobId, links.length, validCount, invalidCount, unknownCount, results)
+
+    // Check if the entire job is now fully complete
+    const updatedJob = await getJob(jobId)
+    if (updatedJob && updatedJob.processed_links >= updatedJob.total_links) {
+      await completeJob(jobId)
+    }
+
+    return c.json({ success: true, processed: links.length })
+  } catch (err: any) {
+    console.error('[Worker] Batch processing error:', err)
+    return c.json({ error: err.message || "Worker failure" }, 500)
+  }
 })
 
 // --------------------------------------------

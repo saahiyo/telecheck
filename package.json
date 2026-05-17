@@ -4,6 +4,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.11",
     "@neondatabase/serverless": "^1.0.2",
+    "@upstash/qstash": "^2.11.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "dotenv": "^17.3.1",

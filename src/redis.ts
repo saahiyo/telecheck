@@ -211,3 +211,55 @@ export const getRedisStats = async (): Promise<Record<string, number>> => {
     return {}
   }
 }
+
+// ── QStash Async Messaging ─────────────────────────────────
+import { Client as QStashClient } from '@upstash/qstash'
+
+let qstashInstance: QStashClient | null = null
+
+export const getQStash = (): QStashClient | null => {
+  if (qstashInstance) return qstashInstance
+  const token = process.env.QSTASH_TOKEN
+  if (!token) return null
+  qstashInstance = new QStashClient({ token })
+  return qstashInstance
+}
+
+export const isQStashConfigured = (): boolean => {
+  return !!process.env.QSTASH_TOKEN
+}
+
+export type QStashBatchMessage = {
+  jobId: string
+  links: string[]
+  contributorId: number | null
+}
+
+export const publishBatchJob = async (
+  jobId: string,
+  linksChunk: string[],
+  contributorId: number | null,
+  reqUrl: string
+): Promise<boolean> => {
+  const qstash = getQStash()
+  if (!qstash) return false
+
+  try {
+    // Construct absolute URL for the worker webhook
+    const urlObj = new URL(reqUrl)
+    const workerUrl = `${urlObj.protocol}//${urlObj.host}/api/worker/batch`
+
+    await qstash.publishJSON({
+      url: workerUrl,
+      body: {
+        jobId,
+        links: linksChunk,
+        contributorId,
+      } satisfies QStashBatchMessage,
+    })
+    return true
+  } catch (err) {
+    console.error('[QStash] Publish failed:', err)
+    return false
+  }
+}

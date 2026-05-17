@@ -23,8 +23,8 @@ export const initDB = async () => {
   try {
     const check = await sql`
       SELECT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'links' AND column_name = 'tags'
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'jobs'
       ) as ready
     `
     if (check[0]?.ready) {
@@ -67,6 +67,22 @@ export const initDB = async () => {
       key TEXT NOT NULL,
       value BIGINT NOT NULL DEFAULT 0,
       PRIMARY KEY (hour, key)
+    )
+  `
+  // ── Jobs table (for QStash async batch processing) ──
+  await sql`
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL, -- 'queued', 'processing', 'completed', 'failed'
+      total_links INTEGER NOT NULL DEFAULT 0,
+      processed_links INTEGER NOT NULL DEFAULT 0,
+      valid_count INTEGER NOT NULL DEFAULT 0,
+      invalid_count INTEGER NOT NULL DEFAULT 0,
+      unknown_count INTEGER NOT NULL DEFAULT 0,
+      results JSONB DEFAULT '[]'::jsonb,
+      error TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `
   // ── Contributors table ──
@@ -625,4 +641,77 @@ export const get24hStats = async (): Promise<Record<string, number>> => {
     result[row.key as string] = parseInt(row.value as string, 10)
   }
   return result
+}
+
+// --------------------------------------------
+// JOBS: QStash Async Batch Tracking Helpers
+// --------------------------------------------
+export type JobRow = {
+  id: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  total_links: number
+  processed_links: number
+  valid_count: number
+  invalid_count: number
+  unknown_count: number
+  results: any[]
+  error: string | null
+  created_at: Date
+  updated_at: Date
+}
+
+export const createJob = async (id: string, totalLinks: number): Promise<void> => {
+  const sql = getDb()
+  await sql`
+    INSERT INTO jobs (id, status, total_links, created_at, updated_at)
+    VALUES (${id}, 'queued', ${totalLinks}, NOW(), NOW())
+  `
+}
+
+export const getJob = async (id: string): Promise<JobRow | null> => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM jobs WHERE id = ${id}`
+  if (!rows.length) return null
+  return rows[0] as JobRow
+}
+
+export const updateJobProgress = async (
+  id: string,
+  processedDelta: number,
+  validDelta: number,
+  invalidDelta: number,
+  unknownDelta: number,
+  resultsChunk: any[]
+): Promise<void> => {
+  const sql = getDb()
+  // Append new results to the existing JSONB results array
+  await sql`
+    UPDATE jobs 
+    SET 
+      status = 'processing',
+      processed_links = processed_links + ${processedDelta},
+      valid_count = valid_count + ${validDelta},
+      invalid_count = invalid_count + ${invalidDelta},
+      unknown_count = unknown_count + ${unknownDelta},
+      results = results || ${JSON.stringify(resultsChunk)}::jsonb,
+      updated_at = NOW()
+    WHERE id = ${id}
+  `
+}
+
+export const completeJob = async (id: string, error?: string): Promise<void> => {
+  const sql = getDb()
+  if (error) {
+    await sql`
+      UPDATE jobs 
+      SET status = 'failed', error = ${error}, updated_at = NOW() 
+      WHERE id = ${id}
+    `
+  } else {
+    await sql`
+      UPDATE jobs 
+      SET status = 'completed', updated_at = NOW() 
+      WHERE id = ${id}
+    `
+  }
 }
