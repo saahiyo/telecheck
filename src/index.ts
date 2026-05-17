@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity } from './db.js'
+import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured } from './redis.js'
 
 const app = new Hono()
 
@@ -83,10 +84,7 @@ type HttpCheckResult = CheckResult & {
   cached: boolean
 }
 
-type CacheEntry = {
-  data: CheckResult
-  expiresAt: number
-}
+// CacheEntry type removed — Redis handles TTL natively
 
 type ContributorIdentityPayload = {
   contributor_id?: unknown
@@ -230,27 +228,14 @@ app.notFound((c) => {
 const startedAt = Date.now()
 
 // --------------------------------------------
-// IN-MEMORY CACHE (5 min TTL)
+// CONSTANTS
 // --------------------------------------------
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 const MAX_URL_LENGTH = 2048
 const MAX_FETCH_BYTES = 1024 * 1024
 const ALLOWED_FETCH_HOSTS = new Set(['t.me', 'telegram.me', 'telegram.org', 'mega.nz', 'mega.co.nz'])
-const cache = new Map<string, CacheEntry>()
 
-const getCached = (key: string): CheckResult | null => {
-  const entry = cache.get(key)
-  if (!entry) return null
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key)
-    return null
-  }
-  return entry.data
-}
-
-const setCache = (key: string, data: CheckResult): void => {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL })
-}
+// ── Cache is now backed by Upstash Redis (see redis.ts) ──
+// Falls back gracefully if Redis is not configured.
 
 const shouldRemoveStoredLink = (status: CheckStatus): boolean => {
   return status === 'invalid' || status === 'expired'
@@ -259,10 +244,12 @@ const shouldRemoveStoredLink = (status: CheckStatus): boolean => {
 const removeStoredLinkIfInvalid = (url: string, result: CheckResult): void => {
   if (!shouldRemoveStoredLink(result.status)) return
 
+  // Remove from both Postgres and Redis cache
   deleteLinks([url]).catch((error) => {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`[WARN] Failed to remove invalid stored link ${url}:`, message)
   })
+  deleteFromCache(url).catch(() => {})
 }
 
 // --------------------------------------------
@@ -551,38 +538,11 @@ const genericCheck = async (_url: string, html: string, httpStatus: number): Pro
 }
 
 // --------------------------------------------
-// MAIN CHECK ROUTER
+// CORE FETCH + CHECK (wrapped by singleflight)
 // --------------------------------------------
-const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<HttpCheckResult> => {
-  const {
-    skipCache = false,
-    contributorId = null,
-    removeInvalidStored = false
-  } = options
-
-  const target = validateFetchTarget(url)
-  if (!target.ok) {
-    incrementStat('invalid').catch(() => {})
-    const result: CheckResult = { status: "invalid", platform: target.platform, metadata: null }
-    if (removeInvalidStored) removeStoredLinkIfInvalid(url, result)
-    return { ...result, cached: false }
-  }
-
-  // Check cache first
-  if (!skipCache) {
-    const cached = getCached(url)
-    if (cached) {
-      incrementStat('cacheHits').catch(() => {})
-      if (removeInvalidStored) {
-        removeStoredLinkIfInvalid(url, cached)
-      }
-      return { ...cached, cached: true }
-    }
-  }
-  incrementStat('cacheMisses').catch(() => {})
-
+const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResult> => {
   try {
-    const res = await fetch(url, { 
+    const res = await fetch(url, {
       redirect: "follow",
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
@@ -590,9 +550,9 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
       signal: AbortSignal.timeout(10000) // 10s timeout
     })
     const html = await readTextWithLimit(res)
-    const platform = target.platform
 
     incrementStat('totalChecks').catch(() => {})
+    incrementRedisStat('totalChecks').catch(() => {})
 
     let result: CheckResult
     switch (platform) {
@@ -607,20 +567,65 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
         break
     }
 
-    // Save valid links to database (fire & forget)
-    if (result.status === 'valid') {
-      saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
-    } else if (removeInvalidStored) {
-      removeStoredLinkIfInvalid(url, result)
-    }
-
-    setCache(url, result)
-    return { ...result, cached: false }
+    // Cache in Redis (fire & forget)
+    setInCache(url, result).catch(() => {})
+    return result
 
   } catch {
     incrementStat('unknown').catch(() => {})
-    return { status: "unknown", platform: detectPlatform(url), metadata: null, cached: false }
+    incrementRedisStat('unknown').catch(() => {})
+    return { status: "unknown", platform, metadata: null }
   }
+}
+
+// --------------------------------------------
+// MAIN CHECK ROUTER
+// --------------------------------------------
+const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<HttpCheckResult> => {
+  const {
+    skipCache = false,
+    contributorId = null,
+    removeInvalidStored = false
+  } = options
+
+  const target = validateFetchTarget(url)
+  if (!target.ok) {
+    incrementStat('invalid').catch(() => {})
+    incrementRedisStat('invalid').catch(() => {})
+    const result: CheckResult = { status: "invalid", platform: target.platform, metadata: null }
+    if (removeInvalidStored) removeStoredLinkIfInvalid(url, result)
+    return { ...result, cached: false }
+  }
+
+  // Check Redis cache first
+  if (!skipCache) {
+    const cached = await getFromCache(url)
+    if (cached) {
+      incrementStat('cacheHits').catch(() => {})
+      incrementRedisStat('cacheHits').catch(() => {})
+      const result = cached as CheckResult
+      if (removeInvalidStored) {
+        removeStoredLinkIfInvalid(url, result)
+      }
+      return { ...result, cached: true }
+    }
+  }
+  incrementStat('cacheMisses').catch(() => {})
+  incrementRedisStat('cacheMisses').catch(() => {})
+
+  // Singleflight: deduplicate concurrent fetches for the same URL
+  const result = await singleflight(`check:${url}`, () =>
+    fetchAndCheck(url, target.platform)
+  )
+
+  // Per-caller side effects (outside singleflight)
+  if (result.status === 'valid') {
+    saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
+  } else if (removeInvalidStored) {
+    removeStoredLinkIfInvalid(url, result)
+  }
+
+  return { ...result, cached: false }
 }
 
 // --------------------------------------------
@@ -649,6 +654,21 @@ app.get('/', async (c) => {
       credits: "@saahiyo",
       responseTime: Date.now() - start
     })
+  }
+
+  // Rate limit single check
+  const ip = getClientIp(c)
+  const rl = await checkRateLimit(ip, 'single')
+  if (rl.limit) {
+    c.header('X-RateLimit-Limit', rl.limit.toString())
+    c.header('X-RateLimit-Remaining', rl.remaining.toString())
+    c.header('X-RateLimit-Reset', rl.reset.toString())
+  }
+  if (!rl.allowed) {
+    return c.json({
+      error: 'Too many requests. Please try again later.',
+      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+    }, 429)
   }
 
   // Resolve contributor from stable browser identity first, then IP fallback
@@ -690,6 +710,21 @@ app.post('/', async (c) => {
 
   if (links.length === 0) {
     return c.json({ error: "Provide { links: [...] }" }, 400)
+  }
+
+  // Rate limit batch check (stricter)
+  const ip = getClientIp(c)
+  const rl = await checkRateLimit(ip, 'batch')
+  if (rl.limit) {
+    c.header('X-RateLimit-Limit', rl.limit.toString())
+    c.header('X-RateLimit-Remaining', rl.remaining.toString())
+    c.header('X-RateLimit-Reset', rl.reset.toString())
+  }
+  if (!rl.allowed) {
+    return c.json({
+      error: 'Too many requests. Please try again later.',
+      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+    }, 429)
   }
 
   // Resolve contributor from stable browser identity first, then IP fallback
@@ -772,14 +807,20 @@ app.get('/normalize', (c) => {
   })
 })
 
-// GLOBAL STATS (reads from DB — persistent across restarts & deployments)
+// GLOBAL STATS (reads from DB + Redis — persistent across restarts & deployments)
 app.get('/stats', async (c) => {
   const period = c.req.query('period')
   const dbStats = period === '24h' ? await get24hStats() : await getStats()
+  const redisCacheSize = await getCacheSize()
+  const redisStats = await getRedisStats()
   return c.json({
     uptime_ms: Date.now() - startedAt,
     ...dbStats,
-    cacheSize: cache.size
+    redis: {
+      configured: isRedisConfigured(),
+      cacheKeys: redisCacheSize,
+      counters: redisStats
+    }
   })
 })
 
@@ -896,6 +937,21 @@ const handleLinksValidateRequest = async (platform?: string, limitQuery: string 
 }
 
 app.get('/links/validate', async (c) => {
+  // Rate limit revalidation (heavy operation)
+  const ip = getClientIp(c)
+  const rl = await checkRateLimit(ip, 'validate')
+  if (rl.limit) {
+    c.header('X-RateLimit-Limit', rl.limit.toString())
+    c.header('X-RateLimit-Remaining', rl.remaining.toString())
+    c.header('X-RateLimit-Reset', rl.reset.toString())
+  }
+  if (!rl.allowed) {
+    return c.json({
+      error: 'Too many requests. Revalidation is a heavy operation.',
+      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+    }, 429)
+  }
+
   const platform = c.req.query('platform')
   const limitQuery = c.req.query('limit') || '100'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
@@ -905,6 +961,21 @@ app.get('/links/validate', async (c) => {
 })
 
 app.post('/links/validate', async (c) => {
+  // Rate limit revalidation (heavy operation)
+  const ip = getClientIp(c)
+  const rl = await checkRateLimit(ip, 'validate')
+  if (rl.limit) {
+    c.header('X-RateLimit-Limit', rl.limit.toString())
+    c.header('X-RateLimit-Remaining', rl.remaining.toString())
+    c.header('X-RateLimit-Reset', rl.reset.toString())
+  }
+  if (!rl.allowed) {
+    return c.json({
+      error: 'Too many requests. Revalidation is a heavy operation.',
+      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000)
+    }, 429)
+  }
+
   const platform = c.req.query('platform')
   const limitQuery = c.req.query('limit') || '100'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
