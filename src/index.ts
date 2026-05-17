@@ -770,8 +770,8 @@ app.post('/', async (c) => {
     await ensureDbReady()
     await createJob(jobId, normalized.length)
 
-    // Chunk links into batches of 10 for QStash workers
-    const CHUNK_SIZE = 10
+    // Chunk links into batches of 50 for QStash workers
+    const CHUNK_SIZE = 50
     const chunks: string[][] = []
     for (let i = 0; i < normalized.length; i += CHUNK_SIZE) {
       chunks.push(normalized.slice(i, i + CHUNK_SIZE))
@@ -865,18 +865,27 @@ app.post('/api/worker/batch', async (c) => {
     let invalidCount = 0
     let unknownCount = 0
 
-    for (const url of links) {
-      const res = await httpCheck(url, {
-        contributorId,
-        removeInvalidStored: true
-      })
-      results.push({ url, ...res })
-      if (res.status === 'valid') validCount++
-      else if (res.status === 'invalid') invalidCount++
-      else unknownCount++
+    const CONCURRENCY = 5
+    for (let i = 0; i < links.length; i += CONCURRENCY) {
+      const batch = links.slice(i, i + CONCURRENCY)
+      const batchResults = await Promise.all(
+        batch.map(async (url) => {
+          const res = await httpCheck(url, { contributorId, removeInvalidStored: true })
+          return { url, ...res }
+        })
+      )
+
+      for (const res of batchResults) {
+        results.push(res)
+        if (res.status === 'valid') validCount++
+        else if (res.status === 'invalid') invalidCount++
+        else unknownCount++
+      }
       
-      // Small delay between checks to be gentle on Telegram/upstream servers
-      await new Promise(r => setTimeout(r, 300))
+      // Delay between concurrent batches to prevent aggressive rate limiting
+      if (i + CONCURRENCY < links.length) {
+        await new Promise(r => setTimeout(r, 200))
+      }
     }
 
     // Update job progress in Postgres
