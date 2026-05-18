@@ -118,8 +118,10 @@ type LinkRow = {
 
 type HttpCheckOptions = {
   skipCache?: boolean
+  knownCacheMiss?: boolean
   contributorId?: number | null
   removeInvalidStored?: boolean
+  saveValidResult?: boolean
 }
 
 type FetchTargetValidation =
@@ -198,6 +200,15 @@ const resolveContributor = async (c: any, body?: ContributorIdentityPayload) => 
   return getOrCreateContributor(identity)
 }
 
+const resolveContributorId = async (c: any, body?: ContributorIdentityPayload): Promise<number | null> => {
+  try {
+    const contributor = await resolveContributor(c, body)
+    return contributor.id as number
+  } catch {
+    return null
+  }
+}
+
 const findContributorForRequest = async (c: any) => {
   await ensureDbReady()
   const identity = await getContributorIdentityInput(c)
@@ -236,6 +247,17 @@ const startedAt = Date.now()
 const MAX_URL_LENGTH = 2048
 const MAX_FETCH_BYTES = 1024 * 1024
 const ALLOWED_FETCH_HOSTS = new Set(['t.me', 'telegram.me', 'telegram.org', 'mega.nz', 'mega.co.nz'])
+const getPositiveIntEnv = (name: string, fallback: number): number => {
+  const value = Number.parseInt(process.env[name] || '', 10)
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+const QSTASH_CHUNK_SIZE = getPositiveIntEnv('QSTASH_CHUNK_SIZE', 50)
+const QSTASH_PUBLISH_CONCURRENCY = getPositiveIntEnv('QSTASH_PUBLISH_CONCURRENCY', 8)
+const QSTASH_WORKER_CONCURRENCY = getPositiveIntEnv('QSTASH_WORKER_CONCURRENCY', 8)
+const QSTASH_WORKER_DELAY_MS = Math.max(
+  0,
+  Number.parseInt(process.env.QSTASH_WORKER_DELAY_MS || '50', 10) || 0
+)
 
 // ── Cache is now backed by Upstash Redis (see redis.ts) ──
 // Falls back gracefully if Redis is not configured.
@@ -590,8 +612,10 @@ const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResu
 const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<HttpCheckResult> => {
   const {
     skipCache = false,
+    knownCacheMiss = false,
     contributorId = null,
-    removeInvalidStored = false
+    removeInvalidStored = false,
+    saveValidResult = true
   } = options
 
   const target = validateFetchTarget(url)
@@ -608,7 +632,7 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
   }
 
   // Check Redis cache first
-  if (!skipCache) {
+  if (!skipCache && !knownCacheMiss) {
     const cached = await getFromCache(url)
     if (cached) {
       incrementStat('cacheHits').catch(() => {})
@@ -620,8 +644,10 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
       return { ...result, cached: true }
     }
   }
-  incrementStat('cacheMisses').catch(() => {})
-  incrementRedisStat('cacheMisses').catch(() => {})
+  if (!knownCacheMiss) {
+    incrementStat('cacheMisses').catch(() => {})
+    incrementRedisStat('cacheMisses').catch(() => {})
+  }
 
   // Singleflight: deduplicate concurrent fetches for the same URL
   const result = await singleflight(`check:${url}`, () =>
@@ -629,7 +655,7 @@ const httpCheck = async (url: string, options: HttpCheckOptions = {}): Promise<H
   )
 
   // Per-caller side effects (outside singleflight)
-  if (result.status === 'valid') {
+  if (saveValidResult && result.status === 'valid') {
     saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
   } else if (removeInvalidStored) {
     removeStoredLinkIfInvalid(url, result)
@@ -686,6 +712,7 @@ app.get('/', async (c) => {
   // ── Fast path: return cached result WITHOUT touching DB ──
   const cached = await getFromCache(normalized)
   if (cached) {
+    incrementStat('cacheHits').catch(() => {})
     incrementRedisStat('cacheHits').catch(() => {})
     return c.json({
       input: link,
@@ -698,16 +725,21 @@ app.get('/', async (c) => {
   }
 
   // ── Cache miss: full check with contributor + DB ──
-  let contributorId: number | null = null
-  try {
-    const contributor = await resolveContributor(c)
-    contributorId = contributor.id as number
-  } catch {}
+  incrementStat('cacheMisses').catch(() => {})
+  incrementRedisStat('cacheMisses').catch(() => {})
+
+  const contributorIdPromise = resolveContributorId(c)
 
   const result = await httpCheck(normalized, {
-    contributorId,
-    removeInvalidStored: true
+    knownCacheMiss: true,
+    removeInvalidStored: true,
+    saveValidResult: false
   })
+
+  if (result.status === 'valid') {
+    const contributorId = await contributorIdPromise
+    saveLink(normalized, result.platform, result.status, result.metadata, contributorId).catch(() => {})
+  }
 
   return c.json({
     input: link,
@@ -752,12 +784,7 @@ app.post('/', async (c) => {
     }, 429)
   }
 
-  // Resolve contributor from stable browser identity first, then IP fallback
-  let contributorId: number | null = null
-  try {
-    const contributor = await resolveContributor(c, body)
-    contributorId = contributor.id as number
-  } catch {}
+  const contributorIdPromise = resolveContributorId(c, body)
 
   const normalized = Array.from(
     new Set(
@@ -775,20 +802,25 @@ app.post('/', async (c) => {
   if (isQStashConfigured() && (isLargeBatch || isAsyncRequested)) {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
     await ensureDbReady()
-    await createJob(jobId, normalized.length)
+    const [, contributorId] = await Promise.all([
+      createJob(jobId, normalized.length),
+      contributorIdPromise
+    ])
 
-    // Chunk links into batches of 50 for QStash workers
-    const CHUNK_SIZE = 50
+    // Chunk links before publishing so each worker invocation stays bounded.
     const chunks: string[][] = []
-    for (let i = 0; i < normalized.length; i += CHUNK_SIZE) {
-      chunks.push(normalized.slice(i, i + CHUNK_SIZE))
+    for (let i = 0; i < normalized.length; i += QSTASH_CHUNK_SIZE) {
+      chunks.push(normalized.slice(i, i + QSTASH_CHUNK_SIZE))
     }
 
     // Publish all chunks to QStash
     let publishedCount = 0
-    for (const chunk of chunks) {
-      const ok = await publishBatchJob(jobId, chunk, contributorId, c.req.url)
-      if (ok) publishedCount++
+    for (let i = 0; i < chunks.length; i += QSTASH_PUBLISH_CONCURRENCY) {
+      const publishBatch = chunks.slice(i, i + QSTASH_PUBLISH_CONCURRENCY)
+      const outcomes = await Promise.all(
+        publishBatch.map((chunk) => publishBatchJob(jobId, chunk, contributorId, c.req.url))
+      )
+      publishedCount += outcomes.filter(Boolean).length
     }
 
     if (publishedCount === 0) {
@@ -808,6 +840,7 @@ app.post('/', async (c) => {
 
   // ── Synchronous Batch Flow (small batches or QStash disabled/failed) ──
   // Safety cap to prevent Vercel function timeout if QStash is not configured
+  const contributorId = await contributorIdPromise
   const syncLinks = normalized.slice(0, 50)
   const truncated = normalized.length > 50
 
@@ -866,15 +899,13 @@ app.post('/api/worker/batch', async (c) => {
       return c.json({ message: "Job already finished or invalid" })
     }
 
-    // Process this chunk sequentially or with low concurrency to avoid upstream rate limits
     const results: BatchResultItem[] = []
     let validCount = 0
     let invalidCount = 0
     let unknownCount = 0
 
-    const CONCURRENCY = 5
-    for (let i = 0; i < links.length; i += CONCURRENCY) {
-      const batch = links.slice(i, i + CONCURRENCY)
+    for (let i = 0; i < links.length; i += QSTASH_WORKER_CONCURRENCY) {
+      const batch = links.slice(i, i + QSTASH_WORKER_CONCURRENCY)
       const batchResults = await Promise.all(
         batch.map(async (url) => {
           const res = await httpCheck(url, { contributorId, removeInvalidStored: true })
@@ -889,9 +920,8 @@ app.post('/api/worker/batch', async (c) => {
         else unknownCount++
       }
       
-      // Delay between concurrent batches to prevent aggressive rate limiting
-      if (i + CONCURRENCY < links.length) {
-        await new Promise(r => setTimeout(r, 200))
+      if (QSTASH_WORKER_DELAY_MS > 0 && i + QSTASH_WORKER_CONCURRENCY < links.length) {
+        await new Promise(r => setTimeout(r, QSTASH_WORKER_DELAY_MS))
       }
     }
 
