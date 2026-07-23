@@ -4,7 +4,8 @@ dotenv.config({ path: '.env.local' })
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity, createJob, getJob, updateJobProgress, completeJob } from './db.js'
+import { saveLink, getLinks, getLinkCount, incrementStat, getStats, get24hStats, deleteLinks, getOrCreateContributor, getContributorLeaderboard, getContributorCount, getContributorByIdentity, getContributorRankById, getContributorActiveLinkCount, updateLinkTags, getUniqueTags, initDB, getContributorByRecoveryKey, updateContributorIdentity, createJob, getJob, updateJobProgress, completeJob, getOrCreateFirebaseContributor, linkContributorToFirebaseByRecoveryKey } from './db.js'
+import { verifyFirebaseToken } from './auth.js'
 import { getFromCache, setInCache, deleteFromCache, getCacheSize, checkRateLimit, singleflight, incrementRedisStat, getRedisStats, isRedisConfigured, publishBatchJob, isQStashConfigured, isUniqueCheck24h, QStashBatchMessage } from './redis.js'
 
 const app = new Hono()
@@ -194,9 +195,22 @@ const getContributorIdentityInput = async (c: any, body?: ContributorIdentityPay
   }
 }
 
+const getFirebaseUserFromRequest = async (c: any): Promise<{ uid: string; email: string | null } | null> => {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+  const token = authHeader.substring(7)
+  return verifyFirebaseToken(token)
+}
+
 const resolveContributor = async (c: any, body?: ContributorIdentityPayload) => {
   await ensureDbReady()
   const identity = await getContributorIdentityInput(c, body)
+  
+  const firebaseUser = await getFirebaseUserFromRequest(c)
+  if (firebaseUser) {
+    return getOrCreateFirebaseContributor(firebaseUser.uid, firebaseUser.email, identity)
+  }
+  
   return getOrCreateContributor(identity)
 }
 
@@ -212,6 +226,12 @@ const resolveContributorId = async (c: any, body?: ContributorIdentityPayload): 
 const findContributorForRequest = async (c: any) => {
   await ensureDbReady()
   const identity = await getContributorIdentityInput(c)
+
+  const firebaseUser = await getFirebaseUserFromRequest(c)
+  if (firebaseUser) {
+    return getOrCreateFirebaseContributor(firebaseUser.uid, firebaseUser.email, identity)
+  }
+
   return getContributorByIdentity(identity)
 }
 
@@ -1315,6 +1335,42 @@ app.post('/contributors/recover', async (c) => {
     })
   } catch (err) {
     return c.json({ error: 'Recovery failed' }, 500)
+  }
+})
+
+// LINK ANONYMOUS ACCOUNT TO FIREBASE
+app.post('/contributors/link-firebase', async (c) => {
+  try {
+    const firebaseUser = await getFirebaseUserFromRequest(c)
+    if (!firebaseUser) {
+      return c.json({ error: 'Authentication required' }, 401)
+    }
+
+    const body = await c.req.json<any>()
+    const recoveryKey = getIdentityValue(body.recovery_key)
+    if (!recoveryKey) {
+      return c.json({ error: 'Recovery key is required' }, 400)
+    }
+
+    await ensureDbReady()
+    const result = await linkContributorToFirebaseByRecoveryKey(
+      recoveryKey,
+      firebaseUser.uid,
+      firebaseUser.email
+    )
+
+    if (!result.success) {
+      return c.json({ error: result.error }, 400)
+    }
+
+    return c.json({
+      success: true,
+      message: result.merged 
+        ? `Successfully merged account into ${result.username}!`
+        : `Successfully linked account!`
+    })
+  } catch (err: any) {
+    return c.json({ error: err.message || 'Linking failed' }, 500)
   }
 })
 

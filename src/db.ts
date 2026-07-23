@@ -138,6 +138,22 @@ export const initDB = async () => {
     END $$
   `
 
+  // Add firebase_uid column to contributors if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN firebase_uid TEXT UNIQUE;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+
+  // Add email column to contributors if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN email TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+
   // ── Performance indexes ──
   // Trigram indexes match the substring ILIKE search used by getLinks/getLinkCount.
   await sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`
@@ -304,6 +320,86 @@ export const getContributorByIdentity = async (identity: ContributorIdentityInpu
   }
 
   return null
+}
+
+export const getOrCreateFirebaseContributor = async (
+  firebaseUid: string,
+  email: string | null,
+  identity: ContributorIdentityInput
+) => {
+  const sql = getDb()
+  const deviceId = cleanOptionalIdentity(identity.deviceId)
+
+  // 1. Try to find by firebase_uid
+  const rows = await sql`SELECT * FROM contributors WHERE firebase_uid = ${firebaseUid} LIMIT 1`
+  if (rows.length > 0) {
+    return updateContributorIdentity(rows[0].id as number, identity.ipHash, deviceId)
+  }
+
+  // 2. Check if there's an anonymous contributor from this device we can link
+  if (deviceId) {
+    const anonRows = await sql`
+      SELECT * FROM contributors 
+      WHERE device_id = ${deviceId} AND firebase_uid IS NULL 
+      LIMIT 1
+    `
+    if (anonRows.length > 0) {
+      const contribId = anonRows[0].id as number
+      await sql`
+        UPDATE contributors 
+        SET firebase_uid = ${firebaseUid}, email = ${email || null}, last_seen = NOW() 
+        WHERE id = ${contribId}
+      `
+      return updateContributorIdentity(contribId, identity.ipHash, deviceId)
+    }
+  }
+
+  // 3. Create a brand new contributor with this firebase_uid
+  const username = await generateUniqueUsername()
+  const recoveryKey = generateRecoveryKey()
+  const newRows = await sql`
+    INSERT INTO contributors (ip_hash, device_id, username, recovery_key, firebase_uid, email)
+    VALUES (${identity.ipHash}, ${deviceId || null}, ${username}, ${recoveryKey}, ${firebaseUid}, ${email || null})
+    RETURNING *
+  `
+  return newRows[0]
+}
+
+export const linkContributorToFirebaseByRecoveryKey = async (
+  recoveryKey: string,
+  firebaseUid: string,
+  email: string | null
+) => {
+  const sql = getDb()
+  
+  const rows = await sql`SELECT * FROM contributors WHERE recovery_key = ${recoveryKey} LIMIT 1`
+  if (rows.length === 0) return { success: false, error: 'Invalid recovery key' }
+
+  const contribId = rows[0].id as number
+
+  if (rows[0].firebase_uid && rows[0].firebase_uid !== firebaseUid) {
+    return { success: false, error: 'This recovery key is already linked to a different account' }
+  }
+
+  const firebaseConflict = await sql`SELECT * FROM contributors WHERE firebase_uid = ${firebaseUid} AND id <> ${contribId} LIMIT 1`
+  if (firebaseConflict.length > 0) {
+    const targetId = firebaseConflict[0].id as number
+    const targetLinksAdded = (firebaseConflict[0].links_added as number) || 0
+    const sourceLinksAdded = (rows[0].links_added as number) || 0
+
+    await sql`UPDATE links SET contributor_id = ${targetId} WHERE contributor_id = ${contribId}`
+    await sql`UPDATE contributors SET links_added = ${targetLinksAdded + sourceLinksAdded}, last_seen = NOW() WHERE id = ${targetId}`
+    await sql`DELETE FROM contributors WHERE id = ${contribId}`
+
+    return { success: true, merged: true, username: firebaseConflict[0].username }
+  }
+
+  await sql`
+    UPDATE contributors 
+    SET firebase_uid = ${firebaseUid}, email = ${email || null}, last_seen = NOW() 
+    WHERE id = ${contribId}
+  `
+  return { success: true, merged: false, username: rows[0].username }
 }
 
 export const getOrCreateContributor = async (identity: string | ContributorIdentityInput) => {
