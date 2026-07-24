@@ -472,7 +472,10 @@ const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckR
       else if (extra.toLowerCase().includes('online')) type = 'group'
       else type = 'user'
       memberCountRaw = extra
-      const digits = extra.replace(/[^\d]/g, '')
+      // Telegram group pages include an online count after a comma, e.g.
+      // "2 408 members, 103 online". Only persist the member-count segment.
+      const memberCountText = extra.split(',', 1)[0]
+      const digits = memberCountText.replace(/[^\d]/g, '')
       memberCount = digits ? parseInt(digits, 10) : null
     }
 
