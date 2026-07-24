@@ -30,6 +30,7 @@ import {
   getOrCreateFirebaseContributor,
   linkContributorToFirebaseByRecoveryKey,
 } from './db.js'
+import { observabilityMiddleware, getMetrics, logError } from './observability.js'
 import { verifyFirebaseToken } from './auth.js'
 import {
   getFromCache,
@@ -74,6 +75,7 @@ const ensureDbReady = async () => {
 }
 
 app.use('*', logger())
+app.use('*', observabilityMiddleware)
 
 app.use(
   '*',
@@ -132,7 +134,11 @@ const findContributorForRequest = async (c: any) => {
 }
 
 app.onError((err, c) => {
-  console.error(`[ERROR] ${c.req.method} ${c.req.url}:`, err.message)
+  logError('app.error', {
+    method: c.req.method,
+    path: c.req.path,
+    message: err.message,
+  })
   return c.json(
     {
       error: err.message || 'Internal Server Error',
@@ -460,13 +466,23 @@ app.post('/api/worker/batch', async (c) => {
 
     return c.json({ success: true, processed: links.length })
   } catch (err: any) {
-    console.error('[Worker] Batch processing error:', err)
+    logError('worker.batch.failed', {
+      jobId: c.req.header('x-request-id') || 'unknown',
+      message: err.message || 'Worker failure',
+    })
     return c.json({ error: err.message || 'Worker failure' }, 500)
   }
 })
 
 app.get('/health', (c) => {
   return c.json({ status: 'ok', uptime_ms: Date.now() - startedAt })
+})
+
+app.get('/metrics', (c) => {
+  return c.json({
+    ...getMetrics(),
+    uptime_ms: Date.now() - startedAt,
+  })
 })
 
 app.get('/info', (c) => {
