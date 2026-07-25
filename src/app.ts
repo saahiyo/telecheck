@@ -87,7 +87,7 @@ app.use(
       return '*'
     },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
     credentials: false,
   })
