@@ -76,6 +76,23 @@ npx tsc --noEmit
 
 ## Endpoints
 
+### Authentication
+
+Protected endpoints require a valid Firebase ID token in the `Authorization` header:
+
+```http
+Authorization: Bearer <firebase_id_token>
+```
+
+Protected endpoints:
+- `POST /` – Batch link validation
+- `GET /links/validate` – List and revalidate stored links
+- `POST /links/validate` – Revalidate stored links
+- `POST /links/tags` – Update tags for a link
+- `POST /contributors/link-firebase` – Link Firebase user to contributor account
+
+Missing or invalid tokens return `401 Unauthorized`.
+
 ### API Info
 
 ```http
@@ -103,6 +120,7 @@ Contributor-aware callers can include `contributor_id`, `device_id`, and `recove
 
 ```http
 POST /
+Authorization: Bearer <firebase_id_token>
 Content-Type: application/json
 
 {
@@ -112,7 +130,7 @@ Content-Type: application/json
 }
 ```
 
-The response groups results under `groups.valid`, `groups.invalid`, and `groups.unknown`.
+**Authentication required.** The response groups results under `groups.valid`, `groups.invalid`, and `groups.unknown`.
 
 ### Saved Links
 
@@ -138,10 +156,13 @@ Saved-link rows include contributor details when available: username, active val
 
 ```http
 GET /links/validate?limit=100
+Authorization: Bearer <firebase_id_token>
+
 POST /links/validate?limit=all
+Authorization: Bearer <firebase_id_token>
 ```
 
-Revalidation bypasses cache, processes links with server-side concurrency of 4, retries invalid/expired results once after a short delay, deletes confirmed invalid or expired links, and keeps unknown results to avoid accidental data loss.
+**Authentication required.** Revalidation bypasses cache, processes links with server-side concurrency of 4, retries invalid/expired results once after a short delay, deletes confirmed invalid or expired links, and keeps unknown results to avoid accidental data loss.
 
 Response fields include `processed`, `kept`, `deleted`, `skipped`, and per-link `details`.
 
@@ -149,7 +170,9 @@ Response fields include `processed`, `kept`, `deleted`, `skipped`, and per-link 
 
 ```http
 GET /tags
+
 POST /links/tags
+Authorization: Bearer <firebase_id_token>
 Content-Type: application/json
 
 {
@@ -157,6 +180,8 @@ Content-Type: application/json
   "tags": ["Tech", "News"]
 }
 ```
+
+**POST requires authentication.** GET retrieves all tags; POST updates tags for a link.
 
 ### Stats
 
@@ -180,9 +205,19 @@ Content-Type: application/json
   "recovery_key": "abc123def456",
   "device_id": "browser-device-id"
 }
+
+POST /contributors/link-firebase
+Authorization: Bearer <firebase_id_token>
+Content-Type: application/json
+
+{
+  "recovery_key": "abc123def456"
+}
 ```
 
 Contributor resolution order is recovery key, browser/device id, then IP hash fallback. Leaderboard/profile counts are recalculated from live valid links rather than trusting stale lifetime counters.
+
+**POST /contributors/link-firebase requires authentication.** Links a Firebase-authenticated user to an anonymous contributor account via recovery key.
 
 ## Database
 

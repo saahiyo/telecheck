@@ -100,6 +100,14 @@ const getFirebaseUserFromRequest = async (c: any): Promise<{ uid: string; email:
   return verifyFirebaseToken(token)
 }
 
+const requireFirebaseUser = async (c: any) => {
+  const firebaseUser = await getFirebaseUserFromRequest(c)
+  if (!firebaseUser) {
+    return c.json({ error: 'Authentication required' }, 401)
+  }
+  return firebaseUser
+}
+
 const resolveContributor = async (c: any, body?: ContributorIdentityPayload) => {
   await ensureDbReady()
   const identity = await getContributorIdentityInput(c, body)
@@ -320,6 +328,9 @@ app.get('/', async (c) => {
 })
 
 app.post('/', async (c) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
   const start = Date.now()
   let body: BatchRequestBody = {}
 
@@ -579,6 +590,9 @@ const handleLinksValidateRequest = async (platform?: string, limitQuery: string 
 }
 
 app.get('/links/validate', async (c) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
   const rl = await getRateLimitHeaders(c, 'validate')
   if (!rl.allowed) {
     return c.json({
@@ -596,6 +610,9 @@ app.get('/links/validate', async (c) => {
 })
 
 app.post('/links/validate', async (c) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
   const rl = await getRateLimitHeaders(c, 'validate')
   if (!rl.allowed) {
     return c.json({
@@ -619,6 +636,9 @@ app.get('/tags', async (c) => {
 
 app.post('/links/tags', async (c) => {
   try {
+    const firebaseUser = await requireFirebaseUser(c)
+    if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
     const { url, tags } = await c.req.json<{ url: string; tags: string[] }>()
     if (!url || !Array.isArray(tags)) {
       return c.json({ error: 'Invalid payload: expected { url: string, tags: string[] }' }, 400)
@@ -724,10 +744,8 @@ app.post('/contributors/recover', async (c) => {
 
 app.post('/contributors/link-firebase', async (c) => {
   try {
-    const firebaseUser = await getFirebaseUserFromRequest(c)
-    if (!firebaseUser) {
-      return c.json({ error: 'Authentication required' }, 401)
-    }
+    const firebaseUser = await requireFirebaseUser(c)
+    if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
 
     const body = await c.req.json<any>()
     const recoveryKey = getIdentityValue(body.recovery_key)
