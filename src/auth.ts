@@ -5,8 +5,10 @@ let isInitialized = false
 const getAuth = () => {
   if (isInitialized) return admin.auth()
 
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
+  // Deployment CLIs can preserve a trailing newline when reading secrets from
+  // standard input. Trim identifier fields before creating the Admin app.
+  const projectId = process.env.FIREBASE_PROJECT_ID?.trim()
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim()
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
   if (projectId && clientEmail && privateKey) {
