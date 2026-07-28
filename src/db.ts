@@ -333,7 +333,33 @@ export const getOrCreateFirebaseContributor = async (
   // 1. Try to find by firebase_uid
   const rows = await sql`SELECT * FROM contributors WHERE firebase_uid = ${firebaseUid} LIMIT 1`
   if (rows.length > 0) {
-    return updateContributorIdentity(rows[0].id as number, identity.ipHash, deviceId)
+    const firebaseContributorId = rows[0].id as number
+
+    // An established Google account can sign in for the first time on a
+    // browser that still has an anonymous contributor. Merge that browser's
+    // historical links into the Google account before returning it.
+    if (deviceId) {
+      const anonymousRows = await sql`
+        SELECT * FROM contributors
+        WHERE device_id = ${deviceId} AND firebase_uid IS NULL AND id <> ${firebaseContributorId}
+        LIMIT 1
+      `
+      if (anonymousRows.length > 0) {
+        const anonymousContributorId = anonymousRows[0].id as number
+        const existingLinksAdded = (rows[0].links_added as number) || 0
+        const anonymousLinksAdded = (anonymousRows[0].links_added as number) || 0
+
+        await sql`UPDATE links SET contributor_id = ${firebaseContributorId} WHERE contributor_id = ${anonymousContributorId}`
+        await sql`
+          UPDATE contributors
+          SET links_added = ${existingLinksAdded + anonymousLinksAdded}, last_seen = NOW()
+          WHERE id = ${firebaseContributorId}
+        `
+        await sql`DELETE FROM contributors WHERE id = ${anonymousContributorId}`
+      }
+    }
+
+    return updateContributorIdentity(firebaseContributorId, identity.ipHash, deviceId)
   }
 
   // 2. Check if there's an anonymous contributor from this device we can link
@@ -355,11 +381,24 @@ export const getOrCreateFirebaseContributor = async (
   }
 
   // 3. Create a brand new contributor with this firebase_uid
+  // A browser device can already belong to another Firebase account. Do not
+  // reuse that device ID: doing so would either violate the unique index or,
+  // worse, make two Google accounts share one contributor identity.
+  let availableDeviceId: string | null = deviceId
+  if (deviceId) {
+    const deviceOwner = await sql`
+      SELECT id FROM contributors WHERE device_id = ${deviceId} LIMIT 1
+    `
+    if (deviceOwner.length > 0) {
+      availableDeviceId = null
+    }
+  }
+
   const username = await generateUniqueUsername()
   const recoveryKey = generateRecoveryKey()
   const newRows = await sql`
     INSERT INTO contributors (ip_hash, device_id, username, recovery_key, firebase_uid, email)
-    VALUES (${identity.ipHash}, ${deviceId || null}, ${username}, ${recoveryKey}, ${firebaseUid}, ${email || null})
+    VALUES (${identity.ipHash}, ${availableDeviceId}, ${username}, ${recoveryKey}, ${firebaseUid}, ${email || null})
     RETURNING *
   `
   return newRows[0]
