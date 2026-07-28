@@ -33,6 +33,7 @@ export const initDB = async () => {
       // existing databases gain Firebase identity support on deployment.
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS firebase_uid TEXT`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS email TEXT`
+      await sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS owner_uid TEXT`
       await sql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_firebase_uid
         ON contributors (firebase_uid)
@@ -91,6 +92,7 @@ export const initDB = async () => {
       unknown_count INTEGER NOT NULL DEFAULT 0,
       results JSONB DEFAULT '[]'::jsonb,
       error TEXT,
+      owner_uid TEXT,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -801,15 +803,16 @@ export type JobRow = {
   unknown_count: number
   results: any[]
   error: string | null
+  owner_uid: string | null
   created_at: Date
   updated_at: Date
 }
 
-export const createJob = async (id: string, totalLinks: number): Promise<void> => {
+export const createJob = async (id: string, totalLinks: number, ownerUid: string): Promise<void> => {
   const sql = getDb()
   await sql`
-    INSERT INTO jobs (id, status, total_links, created_at, updated_at)
-    VALUES (${id}, 'queued', ${totalLinks}, NOW(), NOW())
+    INSERT INTO jobs (id, status, total_links, owner_uid, created_at, updated_at)
+    VALUES (${id}, 'queued', ${totalLinks}, ${ownerUid}, NOW(), NOW())
   `
 }
 

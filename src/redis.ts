@@ -232,9 +232,10 @@ export const getRedisStats = async (): Promise<Record<string, number>> => {
 }
 
 // ── QStash Async Messaging ─────────────────────────────────
-import { Client as QStashClient } from '@upstash/qstash'
+import { Client as QStashClient, Receiver as QStashReceiver } from '@upstash/qstash'
 
 let qstashInstance: QStashClient | null = null
+let qstashReceiver: QStashReceiver | null = null
 
 export const getQStash = (): QStashClient | null => {
   if (qstashInstance) return qstashInstance
@@ -246,6 +247,22 @@ export const getQStash = (): QStashClient | null => {
 
 export const isQStashConfigured = (): boolean => {
   return !!process.env.QSTASH_TOKEN
+}
+
+export const verifyQStashSignature = async (signature: string | undefined, body: string, url: string): Promise<boolean> => {
+  const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY
+  const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY
+  if (!signature || !currentSigningKey || !nextSigningKey) return false
+
+  if (!qstashReceiver) {
+    qstashReceiver = new QStashReceiver({ currentSigningKey, nextSigningKey, devMode: false })
+  }
+
+  try {
+    return await qstashReceiver.verify({ signature, body, url })
+  } catch {
+    return false
+  }
 }
 
 export type QStashBatchMessage = {

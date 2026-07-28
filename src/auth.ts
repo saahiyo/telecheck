@@ -40,7 +40,7 @@ export const verifyFirebaseToken = async (
   token: string
 ): Promise<DecodedUser | null> => {
   const auth = getAuth()
-  if (!auth) {
+  if (!auth && process.env.NODE_ENV !== 'production') {
     // Mock mode for local testing if token starts with "mock_".
     if (token.startsWith('mock_')) {
       const parts = token.split('_')

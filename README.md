@@ -85,6 +85,7 @@ Authorization: Bearer <firebase_id_token>
 ```
 
 Protected endpoints:
+- `GET /?link=...` â€“ Single link validation
 - `POST /` – Batch link validation
 - `GET /links/validate` – List and revalidate stored links
 - `POST /links/validate` – Revalidate stored links
@@ -92,6 +93,17 @@ Protected endpoints:
 - `POST /contributors/link-firebase` – Link Firebase user to contributor account
 
 Missing or invalid tokens return `401 Unauthorized`.
+
+### Authorization configuration
+
+Global mutations are administrator-only: link revalidation, metrics, and updates to links that do not belong to the caller. Configure at least one administrator in the server environment:
+
+```env
+ADMIN_FIREBASE_EMAILS=you@example.com
+# or: ADMIN_FIREBASE_UIDS=firebase-user-uid
+```
+
+QStash workers require `QSTASH_CURRENT_SIGNING_KEY` and `QSTASH_NEXT_SIGNING_KEY`; unsigned worker requests are rejected.
 
 ### API Info
 

@@ -19,10 +19,9 @@ import {
   getContributorRankById,
   getContributorActiveLinkCount,
   updateLinkTags,
+  getLinkByUrl,
   getUniqueTags,
   initDB,
-  getContributorByRecoveryKey,
-  updateContributorIdentity,
   createJob,
   getJob,
   updateJobProgress,
@@ -40,6 +39,7 @@ import {
   isRedisConfigured,
   publishBatchJob,
   isQStashConfigured,
+  verifyQStashSignature,
   isUniqueCheck24h,
   type QStashBatchMessage,
 } from './redis.js'
@@ -105,6 +105,19 @@ const requireFirebaseUser = async (c: any) => {
   if (!firebaseUser) {
     return c.json({ error: 'Authentication required' }, 401)
   }
+  return firebaseUser
+}
+
+const adminUids = new Set((process.env.ADMIN_FIREBASE_UIDS || '').split(',').map(value => value.trim()).filter(Boolean))
+const adminEmails = new Set((process.env.ADMIN_FIREBASE_EMAILS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean))
+
+const isAdmin = (firebaseUser: { uid: string; email: string | null }) =>
+  adminUids.has(firebaseUser.uid) || (!!firebaseUser.email && adminEmails.has(firebaseUser.email.toLowerCase()))
+
+const requireAdmin = async (c: any) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+  if (!isAdmin(firebaseUser)) return c.json({ error: 'Administrator access required' }, 403)
   return firebaseUser
 }
 
@@ -279,6 +292,9 @@ app.get('/', async (c) => {
     })
   }
 
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
   const rl = await getRateLimitHeaders(c, 'single')
   if (!rl.allowed) {
     return c.json({
@@ -363,7 +379,7 @@ app.post('/', async (c) => {
   if (isQStashConfigured() && (isLargeBatch || isAsyncRequested)) {
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
     await ensureDbReady()
-    const [, contributorId] = await Promise.all([createJob(jobId, normalized.length), contributorIdPromise])
+    const [, contributorId] = await Promise.all([createJob(jobId, normalized.length, firebaseUser.uid), contributorIdPromise])
 
     const chunks: string[][] = []
     for (let i = 0; i < normalized.length; i += QSTASH_CHUNK_SIZE) {
@@ -420,18 +436,28 @@ app.post('/', async (c) => {
 })
 
 app.get('/jobs/:id', async (c) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
   const id = c.req.param('id')
   await ensureDbReady()
   const job = await getJob(id)
   if (!job) {
     return c.json({ error: 'Job not found' }, 404)
   }
+  if (!isAdmin(firebaseUser) && job.owner_uid !== firebaseUser.uid) {
+    return c.json({ error: 'Not allowed to access this job' }, 403)
+  }
   return c.json(job)
 })
 
 app.post('/api/worker/batch', async (c) => {
   try {
-    const { jobId, links, contributorId } = await c.req.json<QStashBatchMessage>()
+    const rawBody = await c.req.text()
+    const verified = await verifyQStashSignature(c.req.header('upstash-signature'), rawBody, c.req.url)
+    if (!verified) return c.json({ error: 'Invalid QStash signature' }, 401)
+
+    const { jobId, links, contributorId } = JSON.parse(rawBody) as QStashBatchMessage
     if (!jobId || !Array.isArray(links)) {
       return c.json({ error: 'Invalid worker payload' }, 400)
     }
@@ -489,7 +515,9 @@ app.get('/health', (c) => {
   return c.json({ status: 'ok', uptime_ms: Date.now() - startedAt })
 })
 
-app.get('/metrics', (c) => {
+app.get('/metrics', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
   return c.json({
     ...getMetrics(),
     uptime_ms: Date.now() - startedAt,
@@ -551,18 +579,7 @@ app.get('/links', async (c) => {
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const validate = c.req.query('validate') !== undefined
 
-  if (validate) {
-    const rl = await getRateLimitHeaders(c, 'validate')
-    if (!rl.allowed) {
-      return c.json({
-        error: 'Too many requests. Revalidation is a heavy operation.',
-        retryAfter: Math.ceil((rl.reset - Date.now()) / 1000),
-      }, 429)
-    }
-
-    const result = await runRevalidation(platform || undefined, limitQuery, offset)
-    return c.json(result)
-  }
+  if (validate) return c.json({ error: 'Use POST /links/validate with administrator access.' }, 405)
 
   const isAll = limitQuery.toLowerCase() === 'all'
   const limit = isAll ? 100000 : (parseInt(limitQuery, 10) || 50)
@@ -590,7 +607,7 @@ const handleLinksValidateRequest = async (platform?: string, limitQuery: string 
 }
 
 app.get('/links/validate', async (c) => {
-  const firebaseUser = await requireFirebaseUser(c)
+  const firebaseUser = await requireAdmin(c)
   if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
 
   const rl = await getRateLimitHeaders(c, 'validate')
@@ -610,7 +627,7 @@ app.get('/links/validate', async (c) => {
 })
 
 app.post('/links/validate', async (c) => {
-  const firebaseUser = await requireFirebaseUser(c)
+  const firebaseUser = await requireAdmin(c)
   if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
 
   const rl = await getRateLimitHeaders(c, 'validate')
@@ -646,6 +663,16 @@ app.post('/links/tags', async (c) => {
 
     if (!url.startsWith('http')) {
       return c.json({ error: 'Invalid URL format' }, 400)
+    }
+
+    const link = await getLinkByUrl(url)
+    if (!link) return c.json({ error: 'Link not found' }, 404)
+
+    if (!isAdmin(firebaseUser)) {
+      const contributor = await resolveContributor(c)
+      if (!contributor || link.contributor_id !== contributor.id) {
+        return c.json({ error: 'You can only edit tags on your own links' }, 403)
+      }
     }
 
     await updateLinkTags(url, tags)
@@ -688,6 +715,9 @@ app.get('/contributors', async (c) => {
 
 app.get('/contributors/me', async (c) => {
   try {
+    const firebaseUser = await requireFirebaseUser(c)
+    if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
     const contributor = await findContributorForRequest(c)
 
     if (!contributor) {
@@ -713,6 +743,9 @@ app.get('/contributors/me', async (c) => {
 
 app.post('/contributors/recover', async (c) => {
   try {
+    const firebaseUser = await requireFirebaseUser(c)
+    if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
     const body = await c.req.json<ContributorIdentityPayload>()
     const recoveryKey = getIdentityValue(body.recovery_key)
     if (!recoveryKey) {
@@ -720,23 +753,10 @@ app.post('/contributors/recover', async (c) => {
     }
 
     await ensureDbReady()
-    const contributor = await getContributorByRecoveryKey(recoveryKey)
-    if (!contributor) {
-      return c.json({ error: 'Invalid recovery key' }, 404)
-    }
+    const result = await linkContributorToFirebaseByRecoveryKey(recoveryKey, firebaseUser.uid, firebaseUser.email)
+    if (!result.success) return c.json({ error: result.error }, 400)
 
-    const identity = await getContributorIdentityInput(c, body)
-    const updatedContributor = await updateContributorIdentity(contributor.id as number, identity.ipHash, identity.deviceId)
-
-    const activeLinksCount = await getContributorActiveLinkCount(updatedContributor.id as number)
-
-    return c.json({
-      success: true,
-      message: `Welcome back, ${updatedContributor.username}!`,
-      username: updatedContributor.username,
-      recovery_key: updatedContributor.recovery_key,
-      links_added: activeLinksCount,
-    })
+    return c.json({ success: true, message: 'Recovery identity linked to your account.', username: result.username })
   } catch {
     return c.json({ error: 'Recovery failed' }, 500)
   }
