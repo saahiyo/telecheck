@@ -28,6 +28,16 @@ export const initDB = async () => {
       ) as ready
     `
     if (check[0]?.ready) {
+      // `jobs` only identifies an existing installation; it does not prove
+      // later contributor migrations ran. Keep account migrations here so
+      // existing databases gain Firebase identity support on deployment.
+      await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS firebase_uid TEXT`
+      await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS email TEXT`
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_firebase_uid
+        ON contributors (firebase_uid)
+        WHERE firebase_uid IS NOT NULL
+      `
       return // Schema is up to date — nothing to do
     }
   } catch {
