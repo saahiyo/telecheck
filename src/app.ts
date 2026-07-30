@@ -212,7 +212,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   const validateStoredLink = async (url: string): Promise<RevalidationResultItem> => {
-    const res = await httpCheck(url, { skipCache: true })
+    const res = await httpCheck(url, { skipCache: true, waitForSave: true })
 
     if (res.status === 'valid' || res.status === 'unknown') {
       return { url, action: 'kept' as RevalidationAction, status: res.status }
@@ -220,7 +220,7 @@ const runRevalidation = async (platform?: string, limitQuery: string = '50', off
 
     if (Date.now() + REVALIDATION_RETRY_DELAY_MS + 10000 < deadline) {
       await delay(REVALIDATION_RETRY_DELAY_MS)
-      const retryRes = await httpCheck(url, { skipCache: true })
+      const retryRes = await httpCheck(url, { skipCache: true, waitForSave: true })
 
       if (retryRes.status === 'valid' || retryRes.status === 'unknown') {
         return { url, action: 'kept' as RevalidationAction, status: retryRes.status }

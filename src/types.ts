@@ -95,6 +95,7 @@ export type HttpCheckOptions = {
   contributorId?: number | null
   removeInvalidStored?: boolean
   saveValidResult?: boolean
+  waitForSave?: boolean
 }
 
 export type FetchTargetValidation =

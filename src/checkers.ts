@@ -346,6 +346,7 @@ export const httpCheck = async (url: string, options: HttpCheckOptions = {}): Pr
     contributorId = null,
     removeInvalidStored = false,
     saveValidResult = true,
+    waitForSave = false,
   } = options
 
   const target = validateFetchTarget(url)
@@ -380,7 +381,9 @@ export const httpCheck = async (url: string, options: HttpCheckOptions = {}): Pr
   const result = await singleflight(`check:${url}`, () => fetchAndCheck(url, target.platform))
 
   if (saveValidResult && result.status === 'valid') {
-    saveLink(url, result.platform, result.status, result.metadata, contributorId).catch(() => {})
+    const saveResult = saveLink(url, result.platform, result.status, result.metadata, contributorId)
+    if (waitForSave) await saveResult.catch(() => {})
+    else saveResult.catch(() => {})
   } else if (removeInvalidStored) {
     removeStoredLinkIfInvalid(url, result)
   }
