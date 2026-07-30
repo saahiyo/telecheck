@@ -423,7 +423,7 @@ export const getContributorIdentityInput = async (c: any, body?: { [key: string]
     getIdentityValue(body?.contributor_id) ||
     getIdentityValue(c.req.query('device_id')) ||
     getIdentityValue(c.req.query('contributor_id'))
-  const recoveryKey = getIdentityValue(body?.recovery_key) || getIdentityValue(c.req.query('recovery_key'))
+  const recoveryKey = getIdentityValue(body?.recovery_key)
 
   return {
     ipHash: await getClientIpHash(c),
