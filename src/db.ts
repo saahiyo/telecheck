@@ -25,7 +25,11 @@ export const initDB = async () => {
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables
         WHERE table_name = 'jobs'
-      ) as ready
+      ) as ready,
+      EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_name = 'tag_catalog'
+      ) as tags_ready
     `
     if (check[0]?.ready) {
       // `jobs` only identifies an existing installation; it does not prove
@@ -39,6 +43,21 @@ export const initDB = async () => {
         ON contributors (firebase_uid)
         WHERE firebase_uid IS NOT NULL
       `
+      if (!check[0]?.tags_ready) {
+        await sql`
+          CREATE TABLE IF NOT EXISTS tag_catalog (
+            name TEXT PRIMARY KEY,
+            created_at TIMESTAMP DEFAULT NOW()
+          )
+        `
+        await sql`
+          INSERT INTO tag_catalog (name)
+          SELECT DISTINCT tag
+          FROM links, unnest(tags) AS tag
+          WHERE btrim(tag) <> ''
+          ON CONFLICT (name) DO NOTHING
+        `
+      }
       return // Schema is up to date — nothing to do
     }
   } catch {
@@ -69,6 +88,12 @@ export const initDB = async () => {
       key TEXT PRIMARY KEY,
       value BIGINT NOT NULL DEFAULT 0,
       updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS tag_catalog (
+      name TEXT PRIMARY KEY,
+      created_at TIMESTAMP DEFAULT NOW()
     )
   `
   // ── Hourly stats for rolling 24hr window ──
@@ -148,6 +173,13 @@ export const initDB = async () => {
       ALTER TABLE links ADD COLUMN tags TEXT[] DEFAULT '{}'::text[];
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$
+  `
+  await sql`
+    INSERT INTO tag_catalog (name)
+    SELECT DISTINCT tag
+    FROM links, unnest(tags) AS tag
+    WHERE btrim(tag) <> ''
+    ON CONFLICT (name) DO NOTHING
   `
 
   // Add firebase_uid column to contributors if it doesn't exist
@@ -479,6 +511,12 @@ export const getContributorByIpHash = async (ipHash: string) => {
   return rows.length > 0 ? rows[0] : null
 }
 
+export const getContributorByFirebaseUid = async (firebaseUid: string) => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM contributors WHERE firebase_uid = ${firebaseUid} LIMIT 1`
+  return rows.length > 0 ? rows[0] : null
+}
+
 export const getContributorByDeviceId = async (deviceId: string) => {
   const sql = getDb()
   const rows = await sql`SELECT * FROM contributors WHERE device_id = ${deviceId} LIMIT 1`
@@ -715,12 +753,42 @@ export const updateLinkTags = async (url: string, tags: string[]) => {
 }
 
 // --------------------------------------------
-// TAGS: Get all unique tags used across links
+// TAGS: Global tag catalog
 // --------------------------------------------
-export const getUniqueTags = async () => {
+export const getGlobalTags = async (): Promise<string[]> => {
   const sql = getDb()
-  const rows = await sql`SELECT DISTINCT unnest(tags) as tag FROM links`
-  return rows.map(r => r.tag as string).filter(Boolean)
+  const rows = await sql`SELECT name FROM tag_catalog ORDER BY name ASC`
+  return rows.map(r => r.name as string)
+}
+
+export const createGlobalTag = async (name: string): Promise<boolean> => {
+  const sql = getDb()
+  const rows = await sql`
+    INSERT INTO tag_catalog (name)
+    VALUES (${name})
+    ON CONFLICT (name) DO NOTHING
+    RETURNING name
+  `
+  return rows.length > 0
+}
+
+export const deleteGlobalTag = async (name: string): Promise<boolean> => {
+  const sql = getDb()
+  const rows = await sql`
+    WITH deleted AS (
+      DELETE FROM tag_catalog
+      WHERE name = ${name}
+      RETURNING name
+    ), updated AS (
+      UPDATE links
+      SET tags = array_remove(tags, ${name})
+      WHERE ${name} = ANY(tags)
+        AND EXISTS (SELECT 1 FROM deleted)
+      RETURNING id
+    )
+    SELECT EXISTS (SELECT 1 FROM deleted) AS deleted
+  `
+  return Boolean(rows[0]?.deleted)
 }
 
 // --------------------------------------------

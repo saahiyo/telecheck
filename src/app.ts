@@ -20,7 +20,10 @@ import {
   getContributorActiveLinkCount,
   updateLinkTags,
   getLinkByUrl,
-  getUniqueTags,
+  getGlobalTags,
+  createGlobalTag,
+  deleteGlobalTag,
+  getContributorByFirebaseUid,
   initDB,
   createJob,
   getJob,
@@ -86,7 +89,7 @@ app.use(
       if (origin.startsWith('http://127.0.0.1')) return origin
       return '*'
     },
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 86400,
     credentials: false,
@@ -118,6 +121,19 @@ const requireAdmin = async (c: any) => {
   const firebaseUser = await requireFirebaseUser(c)
   if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
   if (!isAdmin(firebaseUser)) return c.json({ error: 'Administrator access required' }, 403)
+  return firebaseUser
+}
+
+const requireTopRanker = async (c: any) => {
+  const firebaseUser = await requireFirebaseUser(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  await ensureDbReady()
+  const contributor = await getContributorByFirebaseUid(firebaseUser.uid)
+  const rank = contributor ? await getContributorRankById(contributor.id as number) : null
+  if (rank === null || rank > 5) {
+    return c.json({ error: 'Top-ranker access required' }, 403)
+  }
   return firebaseUser
 }
 
@@ -175,7 +191,7 @@ app.notFound((c) => {
     {
       error: 'Not Found',
       path: c.req.path,
-      availableEndpoints: ['/', '/links', '/links/stats', '/health', '/info', '/stats', '/normalize'],
+      availableEndpoints: ['/', '/links', '/links/stats', '/tags', '/health', '/info', '/stats', '/normalize'],
     },
     404
   )
@@ -647,8 +663,40 @@ app.post('/links/validate', async (c) => {
 })
 
 app.get('/tags', async (c) => {
-  const tags = await getUniqueTags()
+  await ensureDbReady()
+  const tags = await getGlobalTags()
   return c.json({ tags })
+})
+
+app.post('/tags', async (c) => {
+  const firebaseUser = await requireTopRanker(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  let body: { name?: unknown }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON' }, 400)
+  }
+
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  if (!name) return c.json({ error: 'Provide { name: string }' }, 400)
+
+  const created = await createGlobalTag(name)
+  if (!created) return c.json({ error: 'Tag already exists' }, 409)
+  return c.json({ success: true, name })
+})
+
+app.delete('/tags', async (c) => {
+  const firebaseUser = await requireTopRanker(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const name = c.req.query('name')?.trim()
+  if (!name) return c.json({ error: 'Missing ?name=' }, 400)
+
+  const deleted = await deleteGlobalTag(name)
+  if (!deleted) return c.json({ error: 'Tag not found' }, 404)
+  return c.json({ success: true, name })
 })
 
 app.post('/links/tags', async (c) => {

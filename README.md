@@ -90,6 +90,8 @@ Protected endpoints:
 - `GET /links/validate` – List and revalidate stored links
 - `POST /links/validate` – Revalidate stored links
 - `POST /links/tags` – Update tags for a link
+- `POST /tags` – Create a global tag (top-five contributors only)
+- `DELETE /tags?name=TagName` – Delete a global tag (top-five contributors only)
 - `POST /contributors/link-firebase` – Link Firebase user to contributor account
 
 Missing or invalid tokens return `401 Unauthorized`.
@@ -183,6 +185,15 @@ Response fields include `processed`, `kept`, `deleted`, `skipped`, and per-link 
 ```http
 GET /tags
 
+POST /tags
+Authorization: Bearer <firebase_id_token>
+Content-Type: application/json
+
+{ "name": "Tech" }
+
+DELETE /tags?name=Tech
+Authorization: Bearer <firebase_id_token>
+
 POST /links/tags
 Authorization: Bearer <firebase_id_token>
 Content-Type: application/json
@@ -193,7 +204,9 @@ Content-Type: application/json
 }
 ```
 
-**POST requires authentication.** GET retrieves all tags; POST updates tags for a link.
+`GET /tags` retrieves the global tag catalog. `POST /tags` and `DELETE /tags?name=...` require Firebase authentication and a contributor rank of five or better. Creating an existing tag returns `409`; deleting a tag also removes it from every saved link.
+
+`POST /links/tags` requires authentication and updates tags for a link.
 
 ### Stats
 
