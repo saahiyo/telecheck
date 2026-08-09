@@ -50,14 +50,17 @@ export const initDB = async () => {
             created_at TIMESTAMP DEFAULT NOW()
           )
         `
-        await sql`
-          INSERT INTO tag_catalog (name)
-          SELECT DISTINCT tag
-          FROM links, unnest(tags) AS tag
-          WHERE btrim(tag) <> ''
-          ON CONFLICT (name) DO NOTHING
-        `
       }
+      // Backfill tags created before the global catalog existed. This is safe
+      // to run on later cold starts too, because the unique key prevents
+      // duplicates and it preserves legacy tags until a top-ranker removes one.
+      await sql`
+        INSERT INTO tag_catalog (name)
+        SELECT DISTINCT tag
+        FROM links, unnest(tags) AS tag
+        WHERE btrim(tag) <> ''
+        ON CONFLICT (name) DO NOTHING
+      `
       return // Schema is up to date — nothing to do
     }
   } catch {
