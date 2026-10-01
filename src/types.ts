@@ -47,6 +47,7 @@ export type MegaCheckResult = {
   status: 'valid' | 'invalid' | 'expired'
   platform: 'mega'
   metadata: MegaMetadata | null
+  reason?: string
 }
 
 export type UnknownCheckResult = {

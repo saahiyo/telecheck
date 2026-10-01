@@ -253,6 +253,83 @@ const telegramCheck = async (url: string, html: string): Promise<TelegramCheckRe
   return { status: 'invalid', platform: 'telegram', metadata: null, reason: 'Channel, group, or user not found' }
 }
 
+const parseMegaHandle = (url: string): { handle: string | null; isFolder: boolean } => {
+  try {
+    const u = new URL(url)
+    const path = u.pathname.toLowerCase()
+    const hash = u.hash
+
+    // Format 1: https://mega.nz/folder/HANDLE#KEY
+    const folderMatch = path.match(/\/folder\/([a-zA-Z0-9_-]+)/)
+    if (folderMatch) return { handle: folderMatch[1], isFolder: true }
+
+    // Format 2: https://mega.nz/file/HANDLE#KEY
+    const fileMatch = path.match(/\/file\/([a-zA-Z0-9_-]+)/)
+    if (fileMatch) return { handle: fileMatch[1], isFolder: false }
+
+    // Format 3: Legacy https://mega.nz/#F!HANDLE!KEY
+    if (hash.startsWith('#F!') || hash.startsWith('#!F!')) {
+      const parts = hash.split('!')
+      if (parts[1]) return { handle: parts[1], isFolder: true }
+    }
+
+    // Format 4: Legacy https://mega.nz/#!HANDLE!KEY
+    if (hash.startsWith('#!')) {
+      const parts = hash.split('!')
+      if (parts[1]) return { handle: parts[1], isFolder: false }
+    }
+
+    return { handle: null, isFolder: false }
+  } catch {
+    return { handle: null, isFolder: false }
+  }
+}
+
+const verifyMegaApiHandle = async (handle: string, isFolder: boolean): Promise<{ exists: boolean; status: 'valid' | 'invalid' | 'expired'; reason?: string } | null> => {
+  try {
+    const apiUrl = isFolder
+      ? `https://g.api.mega.co.nz/cs?id=${Date.now()}&n=${handle}`
+      : `https://g.api.mega.co.nz/cs?id=${Date.now()}`
+
+    const cmd = isFolder ? [{ a: 'f', c: 1, r: 1 }] : [{ a: 'g', p: handle }]
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      body: JSON.stringify(cmd),
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(6000),
+    })
+
+    if (!res.ok) return null
+    const data = await res.json()
+
+    // MEGA API Error Codes:
+    // -2: ENOENT (Object not found / does not exist)
+    // -9: EACCESS (Access denied / requires decryption key, but object exists)
+    // -11: EEXPIRED (Link has expired)
+    // -16: EBLOCKED (Link blocked / TOS violation)
+    // -18: EKEY (Temporary key error, object exists)
+    const errCode = Array.isArray(data) ? (typeof data[0] === 'number' ? data[0] : null) : (typeof data === 'number' ? data : null)
+
+    if (errCode === -2) {
+      return { exists: false, status: 'invalid', reason: 'File or folder does not exist on MEGA' }
+    }
+    if (errCode === -11) {
+      return { exists: false, status: 'expired', reason: 'MEGA link has expired' }
+    }
+    if (errCode === -16) {
+      return { exists: false, status: 'invalid', reason: 'MEGA link blocked due to copyright or terms violation' }
+    }
+    if (errCode === -9 || errCode === -18 || Array.isArray(data)) {
+      return { exists: true, status: 'valid' }
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 const megaCheck = async (url: string, html: string, httpStatus: number): Promise<MegaCheckResult> => {
   const title = extractMeta(html, 'og:title') || extractPageTitle(html)
   const description = extractMeta(html, 'og:description') || extractMeta(html, 'description')
@@ -263,16 +340,49 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
   try {
     const u = new URL(url)
     const path = u.pathname.toLowerCase()
-    if (path.startsWith('/folder')) type = 'folder'
-    else if (path.startsWith('/file')) type = 'file'
+    if (path.startsWith('/folder') || u.hash.includes('F!')) type = 'folder'
+    else if (path.startsWith('/file') || u.hash.startsWith('#!')) type = 'file'
     else if (path.startsWith('/chat')) type = 'chat'
     else type = 'unknown'
   } catch {}
 
-  const genericTitles = ['file folder on mega', 'file on mega', 'folder on mega']
-  const isExpired = title && genericTitles.includes(title.toLowerCase()) && !description
+  // 1. Check for explicit HTML removal/takedown notices
+  const isHtmlExpiredOrRemoved =
+    html.includes('The file you are trying to download is no longer available') ||
+    html.includes('This file has been removed due to a copyright infringement') ||
+    html.includes('The link you are trying to access is not valid') ||
+    /file has been removed|link is no longer valid|folder is not available/i.test(html)
 
-  if (isExpired) {
+  if (isHtmlExpiredOrRemoved) {
+    return {
+      status: 'expired',
+      platform: 'mega',
+      metadata: null,
+      reason: 'File or folder is no longer available on MEGA',
+    }
+  }
+
+  // 2. Query MEGA client API for the exact object handle
+  const { handle, isFolder } = parseMegaHandle(url)
+  if (handle) {
+    const apiCheck = await verifyMegaApiHandle(handle, isFolder)
+    if (apiCheck) {
+      if (apiCheck.status === 'invalid' || apiCheck.status === 'expired') {
+        return {
+          status: apiCheck.status,
+          platform: 'mega',
+          metadata: null,
+          reason: apiCheck.reason,
+        }
+      }
+    }
+  }
+
+  // 3. Check for generic empty shell titles with no metadata
+  const genericTitles = ['file folder on mega', 'file on mega', 'folder on mega']
+  const isGenericBlank = title && genericTitles.includes(title.toLowerCase()) && !description
+
+  if (isGenericBlank && !handle) {
     return {
       status: 'expired',
       platform: 'mega',
@@ -283,6 +393,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
         siteName: siteName || null,
         type,
       },
+      reason: 'No file or folder metadata found',
     }
   }
 
@@ -300,7 +411,7 @@ const megaCheck = async (url: string, html: string, httpStatus: number): Promise
     }
   }
 
-  return { status: 'invalid', platform: 'mega', metadata: null }
+  return { status: 'invalid', platform: 'mega', metadata: null, reason: 'MEGA link is invalid or unreachable' }
 }
 
 const genericCheck = async (_url: string, html: string, httpStatus: number): Promise<UnknownCheckResult> => {
