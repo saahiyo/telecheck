@@ -423,17 +423,34 @@
   <div id="loginPromptOverlay" class="login-overlay">
     <div class="login-card">
       <h2>Admin Authentication</h2>
-      <p>Enter your Firebase Bearer ID Token to access the administrative dashboard.</p>
+      <p>Sign in with your administrator Google account or enter your Firebase ID Token.</p>
       
       <div id="loginError" class="login-error"></div>
 
+      <!-- 1-Click Google Sign In Button -->
+      <button class="btn" id="googleSignInBtn" onclick="signInWithGoogle()" style="width: 100%; justify-content: center; padding: 0.75rem; margin-bottom: 1.25rem; background: white; color: black; border: 1px solid var(--surface-border);">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        <span>Sign In with Google</span>
+      </button>
+
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+        <hr style="flex: 1; border: 0; border-top: 1px solid var(--surface-border);">
+        <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Or manual token</span>
+        <hr style="flex: 1; border: 0; border-top: 1px solid var(--surface-border);">
+      </div>
+
       <div class="form-group">
         <label for="adminTokenInput">Firebase ID Token / Bearer Token</label>
-        <textarea id="adminTokenInput" rows="4" placeholder="eyJhbGciOiJSUzI1NiIsImtpZCI..."></textarea>
+        <textarea id="adminTokenInput" rows="3" placeholder="eyJhbGciOiJSUzI1NiIsImtpZCI..."></textarea>
       </div>
 
       <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-        <button class="btn" id="submitLoginBtn" onclick="submitLogin()">Authenticate</button>
+        <button class="btn" id="submitLoginBtn" onclick="submitLogin()">Authenticate with Token</button>
       </div>
     </div>
   </div>
@@ -543,7 +560,24 @@
 
   <div id="toast"></div>
 
+  <!-- Firebase Client SDK (compat for simple standalone script) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+
   <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBgwuNbo2YaRtMnQhNAOcyXaci9DDMtAy0",
+      authDomain: "projectss-6a660.firebaseapp.com",
+      projectId: "projectss-6a660",
+      storageBucket: "projectss-6a660.firebasestorage.app",
+      messagingSenderId: "703438254376",
+      appId: "1:703438254376:web:561bd47f0f94088262e01d"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+
     let authToken = localStorage.getItem('tc_admin_token') || '';
 
     function showToast(msg) {
@@ -559,6 +593,39 @@
 
     function closeLoginPrompt() {
       document.getElementById('loginPromptOverlay').style.display = 'none';
+    }
+
+    async function signInWithGoogle() {
+      const errEl = document.getElementById('loginError');
+      errEl.style.display = 'none';
+      const btn = document.getElementById('googleSignInBtn');
+      btn.disabled = true;
+
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const result = await firebase.auth().signInWithPopup(provider);
+        const token = await result.user.getIdToken();
+
+        // Verify admin privilege
+        const res = await fetch('/api/admin/overview', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || 'This Google account is not configured as an administrator.');
+        }
+
+        authToken = token;
+        localStorage.setItem('tc_admin_token', token);
+        closeLoginPrompt();
+        initDashboard();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function logout() {
