@@ -294,27 +294,58 @@ const removeStoredLinkIfInvalid = (url: string, result: CheckResult): void => {
   deleteFromCache(url).catch(() => {})
 }
 
+const MAX_REDIRECTS = 3
+
 const fetchAndCheck = async (url: string, platform: Platform): Promise<CheckResult> => {
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      },
-      signal: AbortSignal.timeout(10000),
-    })
+    let currentUrl = url
+    let redirectCount = 0
+    let res: Response | null = null
+
+    while (redirectCount <= MAX_REDIRECTS) {
+      res = await fetch(currentUrl, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+
+      // Check if redirect response (301, 302, 303, 307, 308)
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location')
+        if (!location) break
+
+        const nextUrl = new URL(location, currentUrl).toString()
+        const targetCheck = validateFetchTarget(nextUrl)
+        if (!targetCheck.ok) {
+          return { status: 'invalid', platform, metadata: null }
+        }
+
+        currentUrl = nextUrl
+        redirectCount++
+        continue
+      }
+
+      break
+    }
+
+    if (!res) {
+      return { status: 'unknown', platform, metadata: null }
+    }
+
     const html = await readTextWithLimit(res)
 
     let result: CheckResult
     switch (platform) {
       case 'telegram':
-        result = await telegramCheck(url, html)
+        result = await telegramCheck(currentUrl, html)
         break
       case 'mega':
-        result = await megaCheck(url, html, res.status)
+        result = await megaCheck(currentUrl, html, res.status)
         break
       default:
-        result = await genericCheck(url, html, res.status)
+        result = await genericCheck(currentUrl, html, res.status)
         break
     }
 

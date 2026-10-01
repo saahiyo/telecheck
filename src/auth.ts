@@ -41,8 +41,9 @@ export const verifyFirebaseToken = async (
 ): Promise<DecodedUser | null> => {
   const auth = getAuth()
   if (!auth) {
-    if (process.env.NODE_ENV !== 'production' && token.startsWith('mock_')) {
-      // Mock mode is deliberately limited to non-production environments.
+    // Mock mode is strictly opt-in and prohibited in production environments
+    const allowMock = process.env.ALLOW_MOCK_AUTH === 'true' && process.env.NODE_ENV !== 'production'
+    if (allowMock && token.startsWith('mock_')) {
       const parts = token.split('_')
       return {
         uid: parts[1] || 'mock_user_123',
