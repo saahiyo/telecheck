@@ -700,12 +700,15 @@ app.get('/links/validate', async (c) => {
   const firebaseUser = await requireAdmin(c)
   if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
 
-  const rl = await getRateLimitHeaders(c, 'validate')
-  if (!rl.allowed) {
-    return c.json({
-      error: 'Too many requests. Revalidation is a heavy operation.',
-      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000),
-    }, 429)
+  // Only apply rate limiting if not an authenticated administrator
+  if (!isAdmin(firebaseUser)) {
+    const rl = await getRateLimitHeaders(c, 'validate')
+    if (!rl.allowed) {
+      return c.json({
+        error: 'Too many requests. Revalidation is a heavy operation.',
+        retryAfter: Math.ceil((rl.reset - Date.now()) / 1000),
+      }, 429)
+    }
   }
 
   const platform = c.req.query('platform')
@@ -720,12 +723,15 @@ app.post('/links/validate', async (c) => {
   const firebaseUser = await requireAdmin(c)
   if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
 
-  const rl = await getRateLimitHeaders(c, 'validate')
-  if (!rl.allowed) {
-    return c.json({
-      error: 'Too many requests. Revalidation is a heavy operation.',
-      retryAfter: Math.ceil((rl.reset - Date.now()) / 1000),
-    }, 429)
+  // Only apply rate limiting if not an authenticated administrator
+  if (!isAdmin(firebaseUser)) {
+    const rl = await getRateLimitHeaders(c, 'validate')
+    if (!rl.allowed) {
+      return c.json({
+        error: 'Too many requests. Revalidation is a heavy operation.',
+        retryAfter: Math.ceil((rl.reset - Date.now()) / 1000),
+      }, 429)
+    }
   }
 
   const platform = c.req.query('platform')
