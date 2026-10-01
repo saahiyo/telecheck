@@ -381,6 +381,100 @@
     }
     .tag-delete:hover { color: var(--danger); }
 
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .badge-info { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+
+    /* Live Logs & Terminal Styles */
+    .logs-console {
+      background: #0b0b0e;
+      border: 1px solid var(--surface-border);
+      border-radius: 10px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      max-height: 480px;
+      overflow-y: auto;
+      padding: 0.8rem 1rem;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    .log-row {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      align-items: baseline;
+      word-break: break-all;
+    }
+
+    .log-row:last-child {
+      border-bottom: none;
+    }
+
+    .log-time {
+      color: #64748b;
+      font-size: 0.73rem;
+      flex-shrink: 0;
+    }
+
+    .log-level-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .log-level-info { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .log-level-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .log-level-error { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+    .log-event-tag {
+      color: #a78bfa;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .log-msg {
+      flex: 1;
+      color: #cbd5e1;
+    }
+
+    .log-meta-btn {
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: #1e1e24;
+      border: 1px solid var(--surface-border);
+    }
+    .log-meta-btn:hover {
+      background: #272730;
+      color: white;
+    }
+
+    .telemetry-stat-card {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .telemetry-stat-card .val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .telemetry-stat-card .lbl {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
     /* Toast notification */
     #toast {
       position: fixed;
@@ -509,6 +603,7 @@
       <div class="tabs-header">
         <div class="tab-item active" id="tabContributorsBtn" onclick="switchTab('contributors')">Registered Contributors</div>
         <div class="tab-item" id="tabTagsBtn" onclick="switchTab('tags')">Global Tags Catalog</div>
+        <div class="tab-item" id="tabLogsBtn" onclick="switchTab('logs')">📜 Live Logs & Telemetry</div>
         <div class="tab-item" id="tabSystemBtn" onclick="switchTab('system')">System & Redis Status</div>
       </div>
 
@@ -548,6 +643,112 @@
         </div>
         <div class="actions-card">
           <div id="tagCatalogContainer" style="display: flex; flex-wrap: wrap;"></div>
+        </div>
+      </div>
+
+      <!-- Tab: Live Logs & Error Telemetry -->
+      <div id="tabLogs" style="display: none;">
+        <!-- Telemetry metric summary cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+          <div class="telemetry-stat-card">
+            <span class="lbl">Total Monitored Requests</span>
+            <span class="val" id="telemetryReqCount" style="color: #60a5fa;">0</span>
+          </div>
+          <div class="telemetry-stat-card">
+            <span class="lbl">Total System Errors</span>
+            <span class="val" id="telemetryErrCount" style="color: #f87171;">0</span>
+          </div>
+          <div class="telemetry-stat-card">
+            <span class="lbl">Success / OK Ratio</span>
+            <span class="val" id="telemetrySuccessRate" style="color: #34d399;">100%</span>
+          </div>
+          <div class="telemetry-stat-card">
+            <span class="lbl">Server Uptime</span>
+            <span class="val" id="telemetryUptime" style="color: #fbbf24;">0m</span>
+          </div>
+        </div>
+
+        <!-- Controls Bar -->
+        <div class="actions-card" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <label style="font-size: 0.8rem; color: var(--text-muted);">View:</label>
+              <select id="logViewSelector" onchange="switchLogView(this.value)" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 6px; padding: 0.35rem 0.6rem; color: white; font-size: 0.8rem;">
+                <option value="stream">Live Event Stream</option>
+                <option value="errors">Error Telemetry & Stacks</option>
+                <option value="db">Persistent Audit Logs (DB)</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <label style="font-size: 0.8rem; color: var(--text-muted);">Level:</label>
+              <select id="logLevelFilter" onchange="renderActiveLogView()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 6px; padding: 0.35rem 0.6rem; color: white; font-size: 0.8rem;">
+                <option value="all">All Levels</option>
+                <option value="info">INFO</option>
+                <option value="warn">WARN</option>
+                <option value="error">ERROR</option>
+              </select>
+            </div>
+
+            <input type="text" id="logSearchInput" onkeyup="renderActiveLogView()" placeholder="Filter logs by route, IP, message..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 6px; padding: 0.35rem 0.6rem; color: white; font-size: 0.8rem; width: 220px;">
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--text-muted); cursor: pointer;">
+              <input type="checkbox" id="autoScrollLogs" checked> Auto-refresh (3s)
+            </label>
+            <button class="btn btn-secondary" onclick="fetchAdminLogs()" style="font-size: 0.78rem; padding: 0.35rem 0.65rem;">
+              ↻ Refresh
+            </button>
+            <button class="btn btn-secondary" onclick="clearTelemetry()" style="font-size: 0.78rem; padding: 0.35rem 0.65rem; color: #f87171;">
+              Clear Buffer
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. Live Event Stream View -->
+        <div id="logStreamContainer">
+          <div class="logs-console" id="logConsoleStream">
+            <div style="color: var(--text-muted); text-align: center; padding: 2rem;">Connecting to telemetry stream...</div>
+          </div>
+        </div>
+
+        <!-- 2. Error Telemetry View -->
+        <div id="logErrorsContainer" class="table-container" style="display: none;">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Status</th>
+                <th>Path & Method</th>
+                <th>Error Message</th>
+                <th>Request ID</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="logErrorsTbody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No errors recorded in telemetry buffer.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 3. Persistent DB Logs View -->
+        <div id="logDbContainer" class="table-container" style="display: none;">
+          <table>
+            <thead>
+              <tr>
+                <th>Date / Time</th>
+                <th>Level</th>
+                <th>Event</th>
+                <th>Message / Endpoint</th>
+                <th>IP</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="logDbTbody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No logs in database.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1042,11 +1243,225 @@
       `;
     }
 
+    let logsPollingInterval = null;
+    let cachedLogsData = { live_events: [], recent_errors: [], db_logs: [], summary: {} };
+    let currentLogView = 'stream';
+
+    function switchLogView(view) {
+      currentLogView = view;
+      document.getElementById('logStreamContainer').style.display = view === 'stream' ? 'block' : 'none';
+      document.getElementById('logErrorsContainer').style.display = view === 'errors' ? 'block' : 'none';
+      document.getElementById('logDbContainer').style.display = view === 'db' ? 'block' : 'none';
+      renderActiveLogView();
+    }
+
+    async function fetchAdminLogs() {
+      if (!authToken) return;
+      try {
+        const level = document.getElementById('logLevelFilter')?.value || 'all';
+        const search = document.getElementById('logSearchInput')?.value || '';
+        const queryParams = new URLSearchParams({ limit: '100' });
+        if (level !== 'all') queryParams.append('level', level);
+        if (search) queryParams.append('search', search);
+
+        const res = await fetch(`/api/admin/logs?${queryParams.toString()}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        cachedLogsData = data;
+        renderTelemetrySummary(data.summary);
+        renderActiveLogView();
+      } catch (err) {
+        console.error('Failed to fetch telemetry logs:', err);
+      }
+    }
+
+    function renderTelemetrySummary(summary = {}) {
+      if (!summary) return;
+      document.getElementById('telemetryReqCount').textContent = (summary.totalRequests || 0).toLocaleString();
+      document.getElementById('telemetryErrCount').textContent = (summary.totalErrors || 0).toLocaleString();
+      
+      const reqs = summary.totalRequests || 0;
+      const errs = summary.totalErrors || 0;
+      const rate = reqs > 0 ? (((reqs - errs) / reqs) * 100).toFixed(1) + '%' : '100%';
+      document.getElementById('telemetrySuccessRate').textContent = rate;
+
+      const uptimeSec = Math.floor((summary.uptimeMs || 0) / 1000);
+      const uptimeMin = Math.floor(uptimeSec / 60);
+      document.getElementById('telemetryUptime').textContent = uptimeMin > 60 ? `${Math.floor(uptimeMin/60)}h ${uptimeMin%60}m` : `${uptimeMin}m`;
+    }
+
+    function renderActiveLogView() {
+      const levelFilter = document.getElementById('logLevelFilter')?.value || 'all';
+      const searchFilter = (document.getElementById('logSearchInput')?.value || '').toLowerCase().trim();
+
+      if (currentLogView === 'stream') {
+        renderStreamView(levelFilter, searchFilter);
+      } else if (currentLogView === 'errors') {
+        renderErrorsView(searchFilter);
+      } else if (currentLogView === 'db') {
+        renderDbLogsView(levelFilter, searchFilter);
+      }
+    }
+
+    function renderStreamView(levelFilter, searchFilter) {
+      const consoleEl = document.getElementById('logConsoleStream');
+      const events = (cachedLogsData.live_events || []).filter(e => {
+        if (levelFilter !== 'all' && e.level !== levelFilter) return false;
+        if (searchFilter) {
+          const str = `${e.event} ${e.level} ${JSON.stringify(e.payload)}`.toLowerCase();
+          if (!str.includes(searchFilter)) return false;
+        }
+        return true;
+      });
+
+      if (!events.length) {
+        consoleEl.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 2rem;">No matching telemetry events.</div>';
+        return;
+      }
+
+      consoleEl.innerHTML = events.map(e => {
+        const time = new Date(e.timestamp).toLocaleTimeString();
+        const p = e.payload || {};
+        const methodPath = p.method && p.path ? `${p.method} ${p.path}` : '';
+        const status = p.status ? `[${p.status}]` : '';
+        const duration = p.durationMs !== undefined ? `${p.durationMs}ms` : '';
+        const ip = p.ip ? `(${p.ip})` : '';
+        const msg = p.message ? `• ${p.message}` : '';
+
+        return `
+          <div class="log-row">
+            <span class="log-time">${time}</span>
+            <span class="log-level-badge log-level-${e.level}">${e.level}</span>
+            <span class="log-event-tag">${escapeHtml(e.event)}</span>
+            <span class="log-msg">
+              <strong>${escapeHtml(methodPath)}</strong> ${status} ${duration} ${escapeHtml(ip)} <span style="color:#f87171;">${escapeHtml(msg)}</span>
+            </span>
+            <button class="log-meta-btn" onclick='inspectLogPayload(${JSON.stringify(JSON.stringify(e.payload))})'>JSON</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderErrorsView(searchFilter) {
+      const tbody = document.getElementById('logErrorsTbody');
+      const errors = (cachedLogsData.recent_errors || []).filter(err => {
+        if (searchFilter) {
+          const str = `${err.message} ${err.path || ''} ${err.requestId || ''}`.toLowerCase();
+          if (!str.includes(searchFilter)) return false;
+        }
+        return true;
+      });
+
+      if (!errors.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No system errors recorded in telemetry buffer. Clean bill of health!</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = errors.map(err => {
+        const time = new Date(err.timestamp).toLocaleTimeString();
+        const statusBadge = err.status >= 500 ? 'badge-danger' : 'badge-warning';
+        return `
+          <tr>
+            <td class="mono" style="font-size: 0.75rem;">${time}</td>
+            <td><span class="badge ${statusBadge}">${err.status || 500}</span></td>
+            <td><strong>${escapeHtml(err.method || 'GET')}</strong> <span class="mono">${escapeHtml(err.path || '-')}</span></td>
+            <td style="color: #f87171; font-weight: 500;">${escapeHtml(err.message)}</td>
+            <td class="mono" style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(err.requestId || '-')}</td>
+            <td>
+              <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick='inspectErrorDetail(${JSON.stringify(JSON.stringify(err))})'>Inspect</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderDbLogsView(levelFilter, searchFilter) {
+      const tbody = document.getElementById('logDbTbody');
+      const logs = (cachedLogsData.db_logs || []).filter(l => {
+        if (levelFilter !== 'all' && l.level !== levelFilter) return false;
+        if (searchFilter) {
+          const str = `${l.message || ''} ${l.event || ''} ${l.path || ''} ${l.ip || ''}`.toLowerCase();
+          if (!str.includes(searchFilter)) return false;
+        }
+        return true;
+      });
+
+      if (!logs.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No persistent logs recorded in database.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = logs.map(l => {
+        const dateStr = new Date(l.created_at).toLocaleString();
+        const lvlClass = l.level === 'error' ? 'badge-danger' : (l.level === 'warn' ? 'badge-warning' : 'badge-info');
+        return `
+          <tr>
+            <td class="mono" style="font-size: 0.75rem;">${dateStr}</td>
+            <td><span class="badge ${lvlClass}">${escapeHtml(l.level)}</span></td>
+            <td><strong class="mono" style="color: #a78bfa;">${escapeHtml(l.event)}</strong></td>
+            <td>${escapeHtml(l.message || `${l.method || ''} ${l.path || ''}`)}</td>
+            <td class="mono" style="font-size: 0.75rem; color: var(--text-muted);">${escapeHtml(l.ip || '-')}</td>
+            <td>
+              <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick='inspectLogPayload(${JSON.stringify(JSON.stringify(l.payload))})'>JSON</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function inspectLogPayload(jsonStr) {
+      try {
+        const obj = JSON.parse(jsonStr);
+        alert(JSON.stringify(obj, null, 2));
+      } catch {
+        alert(jsonStr);
+      }
+    }
+
+    function inspectErrorDetail(jsonStr) {
+      try {
+        const err = JSON.parse(jsonStr);
+        let detail = `Error: ${err.message}\nStatus: ${err.status}\nRoute: ${err.method} ${err.path}\nRequest ID: ${err.requestId}\nIP: ${err.ip}\nTimestamp: ${err.timestamp}\n\n`;
+        if (err.stack) {
+          detail += `Stack Trace:\n${err.stack}\n\n`;
+        }
+        if (err.context) {
+          detail += `Context:\n${JSON.stringify(err.context, null, 2)}`;
+        }
+        alert(detail);
+      } catch {
+        alert(jsonStr);
+      }
+    }
+
+    async function clearTelemetry() {
+      if (!confirm('Clear all items in the live telemetry memory buffer?')) return;
+      try {
+        await fetch('/api/admin/logs/clear', {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        showToast('Telemetry buffer cleared');
+        fetchAdminLogs();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
     function switchTab(tab) {
       document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
       document.getElementById('tabContributors').style.display = 'none';
       document.getElementById('tabTags').style.display = 'none';
+      document.getElementById('tabLogs').style.display = 'none';
       document.getElementById('tabSystem').style.display = 'none';
+
+      if (logsPollingInterval) {
+        clearInterval(logsPollingInterval);
+        logsPollingInterval = null;
+      }
 
       if (tab === 'contributors') {
         document.getElementById('tabContributorsBtn').classList.add('active');
@@ -1054,6 +1469,16 @@
       } else if (tab === 'tags') {
         document.getElementById('tabTagsBtn').classList.add('active');
         document.getElementById('tabTags').style.display = 'block';
+      } else if (tab === 'logs') {
+        document.getElementById('tabLogsBtn').classList.add('active');
+        document.getElementById('tabLogs').style.display = 'block';
+        fetchAdminLogs();
+        // Setup 3s polling for live logs
+        logsPollingInterval = setInterval(() => {
+          if (document.getElementById('autoScrollLogs')?.checked) {
+            fetchAdminLogs();
+          }
+        }, 3000);
       } else if (tab === 'system') {
         document.getElementById('tabSystemBtn').classList.add('active');
         document.getElementById('tabSystem').style.display = 'block';

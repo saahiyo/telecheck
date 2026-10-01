@@ -52,6 +52,25 @@ export const initDB = async () => {
           )
         `
       }
+      await sql`
+        CREATE TABLE IF NOT EXISTS system_logs (
+          id SERIAL PRIMARY KEY,
+          level TEXT NOT NULL,
+          event TEXT NOT NULL,
+          message TEXT,
+          request_id TEXT,
+          status INTEGER,
+          method TEXT,
+          path TEXT,
+          ip TEXT,
+          payload JSONB,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `
+      await sql`
+        CREATE INDEX IF NOT EXISTS idx_system_logs_created_at
+        ON system_logs (created_at DESC)
+      `
       // Backfill tags created before the global catalog existed. This is safe
       // to run on later cold starts too, because the unique key prevents
       // duplicates and it preserves legacy tags until a top-ranker removes one.
@@ -97,6 +116,21 @@ export const initDB = async () => {
   await sql`
     CREATE TABLE IF NOT EXISTS tag_catalog (
       name TEXT PRIMARY KEY,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `
+  await sql`
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id SERIAL PRIMARY KEY,
+      level TEXT NOT NULL,
+      event TEXT NOT NULL,
+      message TEXT,
+      request_id TEXT,
+      status INTEGER,
+      method TEXT,
+      path TEXT,
+      ip TEXT,
+      payload JSONB,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `
@@ -1027,5 +1061,157 @@ export const completeJob = async (id: string, error?: string): Promise<void> => 
       SET status = 'completed', updated_at = NOW() 
       WHERE id = ${id}
     `
+  }
+}
+
+export interface SystemLogRow {
+  id: number
+  level: string
+  event: string
+  message: string | null
+  request_id: string | null
+  status: number | null
+  method: string | null
+  path: string | null
+  ip: string | null
+  payload: any
+  created_at: string
+}
+
+export const insertSystemLog = async (entry: {
+  level: string
+  event: string
+  message?: string
+  requestId?: string
+  status?: number
+  method?: string
+  path?: string
+  ip?: string
+  payload?: any
+}): Promise<void> => {
+  try {
+    const sql = getDb()
+    await sql`
+      INSERT INTO system_logs (
+        level, event, message, request_id, status, method, path, ip, payload, created_at
+      ) VALUES (
+        ${entry.level},
+        ${entry.event},
+        ${entry.message || null},
+        ${entry.requestId || null},
+        ${entry.status || null},
+        ${entry.method || null},
+        ${entry.path || null},
+        ${entry.ip || null},
+        ${JSON.stringify(entry.payload || {})}::jsonb,
+        NOW()
+      )
+    `
+  } catch (err) {
+    // Fail-safe: database logging should never crash the main request flow
+    console.error('Failed to persist system log:', err)
+  }
+}
+
+export const getSystemLogs = async (
+  options: {
+    limit?: number
+    offset?: number
+    level?: string
+    search?: string
+  } = {}
+): Promise<{ logs: SystemLogRow[]; total: number }> => {
+  const sql = getDb()
+  const limit = Math.min(Math.max(options.limit || 50, 1), 200)
+  const offset = Math.max(options.offset || 0, 0)
+  const level = options.level?.trim()
+  const search = options.search?.trim()
+
+  let logs: any[] = []
+  let totalCount = 0
+
+  if (level && search) {
+    const searchPattern = `%${search}%`
+    const [rows, countRes] = await Promise.all([
+      sql`
+        SELECT * FROM system_logs
+        WHERE level = ${level} AND (
+          message ILIKE ${searchPattern} OR
+          event ILIKE ${searchPattern} OR
+          path ILIKE ${searchPattern} OR
+          request_id ILIKE ${searchPattern}
+        )
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `,
+      sql`
+        SELECT COUNT(*) as count FROM system_logs
+        WHERE level = ${level} AND (
+          message ILIKE ${searchPattern} OR
+          event ILIKE ${searchPattern} OR
+          path ILIKE ${searchPattern} OR
+          request_id ILIKE ${searchPattern}
+        )
+      `,
+    ])
+    logs = rows
+    totalCount = parseInt(countRes[0]?.count || '0', 10)
+  } else if (level) {
+    const [rows, countRes] = await Promise.all([
+      sql`
+        SELECT * FROM system_logs
+        WHERE level = ${level}
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `,
+      sql`
+        SELECT COUNT(*) as count FROM system_logs
+        WHERE level = ${level}
+      `,
+    ])
+    logs = rows
+    totalCount = parseInt(countRes[0]?.count || '0', 10)
+  } else if (search) {
+    const searchPattern = `%${search}%`
+    const [rows, countRes] = await Promise.all([
+      sql`
+        SELECT * FROM system_logs
+        WHERE (
+          message ILIKE ${searchPattern} OR
+          event ILIKE ${searchPattern} OR
+          path ILIKE ${searchPattern} OR
+          request_id ILIKE ${searchPattern}
+        )
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `,
+      sql`
+        SELECT COUNT(*) as count FROM system_logs
+        WHERE (
+          message ILIKE ${searchPattern} OR
+          event ILIKE ${searchPattern} OR
+          path ILIKE ${searchPattern} OR
+          request_id ILIKE ${searchPattern}
+        )
+      `,
+    ])
+    logs = rows
+    totalCount = parseInt(countRes[0]?.count || '0', 10)
+  } else {
+    const [rows, countRes] = await Promise.all([
+      sql`
+        SELECT * FROM system_logs
+        ORDER BY created_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `,
+      sql`SELECT COUNT(*) as count FROM system_logs`,
+    ])
+    logs = rows
+    totalCount = parseInt(countRes[0]?.count || '0', 10)
+  }
+
+  return {
+    logs: logs as SystemLogRow[],
+    total: totalCount,
   }
 }

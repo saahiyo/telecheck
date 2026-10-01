@@ -39,8 +39,10 @@ import {
   resetContributorRecoveryKey,
   setContributorBanStatus,
   reassignContributorLinks,
+  getSystemLogs,
+  insertSystemLog,
 } from './db.js'
-import { observabilityMiddleware, getMetrics, logError } from './observability.js'
+import { observabilityMiddleware, getMetrics, logError, getTelemetryData, clearTelemetryBuffer, setLogSink } from './observability.js'
 import { verifyFirebaseToken } from './auth.js'
 import {
   getFromCache,
@@ -84,6 +86,15 @@ const ensureDbReady = async () => {
   }
   await dbInitPromise
 }
+
+// Persist errors and warnings to Postgres system_logs table
+setLogSink(async (entry) => {
+  if (entry.level === 'error' || entry.level === 'warn') {
+    ensureDbReady()
+      .then(() => insertSystemLog(entry))
+      .catch(() => {})
+  }
+})
 
 app.use('*', logger())
 app.use('*', observabilityMiddleware)
@@ -813,6 +824,39 @@ app.post('/api/admin/contributors/reassign-links', async (c) => {
   await ensureDbReady()
   const moved = await reassignContributorLinks(fromId, toId)
   return c.json({ success: true, moved_count: moved, from_id: fromId, to_id: toId })
+})
+
+app.get('/api/admin/logs', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  await ensureDbReady()
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 100)
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+  const level = c.req.query('level') || ''
+  const search = c.req.query('search') || ''
+
+  // 1. Get real-time in-memory buffer
+  const memoryTelemetry = getTelemetryData(limit)
+
+  // 2. Query persistent DB logs
+  const dbLogsResult = await getSystemLogs({ limit, offset, level, search }).catch(() => ({ logs: [], total: 0 }))
+
+  return c.json({
+    summary: memoryTelemetry.summary,
+    live_events: memoryTelemetry.recentEvents,
+    recent_errors: memoryTelemetry.recentErrors,
+    db_logs: dbLogsResult.logs,
+    db_total: dbLogsResult.total,
+  })
+})
+
+app.delete('/api/admin/logs/clear', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  clearTelemetryBuffer()
+  return c.json({ success: true, message: 'Telemetry in-memory buffer cleared' })
 })
 
 
