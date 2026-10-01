@@ -751,9 +751,8 @@
       tbody.innerHTML = list.map(c => `
         <tr style="${c.is_banned ? 'opacity: 0.6; background: rgba(239, 68, 68, 0.05);' : ''}">
           <td class="mono">${c.id}</td>
-          <td>
+          <td ondblclick="editUsername(${c.id}, '${escapeHtml(c.username)}')" title="Double-click to edit username" style="cursor: pointer; user-select: none;">
             <strong>${c.username}</strong>
-            <button onclick="editUsername(${c.id}, '${escapeHtml(c.username)}')" title="Edit Username" style="background:none; border:none; color:var(--text-muted); cursor:pointer; margin-left:4px;">✏️</button>
           </td>
           <td>${c.email ? `<span class="badge badge-primary">${c.email}</span>` : '<span style="color:var(--text-muted)">Anonymous</span>'}</td>
           <td>
