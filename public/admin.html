@@ -128,6 +128,35 @@
     }
     button.btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
 
+    /* Spinning animation for loading */
+    .spin {
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Page Loading Screen */
+    .page-loader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 50vh;
+      gap: 1rem;
+      color: var(--text-muted);
+    }
+    .page-loader .spinner {
+      width: 38px;
+      height: 38px;
+      border: 3px solid rgba(59, 130, 246, 0.15);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+    }
+
     /* Login Modal / Prompt Overlay */
     .login-overlay {
       position: fixed;
@@ -648,6 +677,12 @@
     </div>
   </div>
 
+  <!-- Page Loading State (displayed while checking auth / fetching initial metrics) -->
+  <div class="page-loader" id="pageLoadingState">
+    <div class="spinner"></div>
+    <div style="font-size: 0.88rem; font-weight: 500;">Connecting to TeleCheck Admin Console...</div>
+  </div>
+
   <!-- Dashboard Container -->
   <main class="container" id="dashboardContent" style="display: none;">
     <!-- System Overview Statistics -->
@@ -1012,10 +1047,14 @@
     }
 
     function openLoginPrompt() {
+      const loader = document.getElementById('pageLoadingState');
+      if (loader) loader.style.display = 'none';
       document.getElementById('loginPromptOverlay').style.display = 'flex';
     }
 
     function closeLoginPrompt() {
+      const loader = document.getElementById('pageLoadingState');
+      if (loader) loader.style.display = 'none';
       document.getElementById('loginPromptOverlay').style.display = 'none';
     }
 
@@ -1195,6 +1234,10 @@
     function applyDashboardData(data) {
       closeLoginPrompt();
 
+      // Hide Initial Page Loading State
+      const loader = document.getElementById('pageLoadingState');
+      if (loader) loader.style.display = 'none';
+
       // Show UI
       document.getElementById('dashboardContent').style.display = 'flex';
       document.getElementById('userInfoPill').style.display = 'flex';
@@ -1223,6 +1266,16 @@
 
     async function loadContributors() {
       const tbody = document.getElementById('contributorsTbody');
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+              <i class="ri-loader-4-line spin" style="font-size: 22px; color: var(--primary); display: inline-block; margin-bottom: 0.5rem;"></i>
+              <div style="font-size: 0.82rem;">Loading contributors...</div>
+            </td>
+          </tr>
+        `;
+      }
       try {
         const res = await adminFetch('/api/admin/contributors?limit=150');
         const data = await res.json();
@@ -1434,7 +1487,7 @@
     async function triggerRevalidation() {
       const btn = document.getElementById('revalidateBtn');
       btn.disabled = true;
-      btn.textContent = 'Revalidating...';
+      btn.innerHTML = '<i class="ri-refresh-line spin" style="font-size: 15px;"></i><span>Revalidating...</span>';
 
       try {
         const res = await adminFetch('/links/validate?limit=50', {
@@ -1684,6 +1737,16 @@
 
     async function loadStoredLinks() {
       const tbody = document.getElementById('linksTbody');
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+              <i class="ri-loader-4-line spin" style="font-size: 22px; color: var(--primary); display: inline-block; margin-bottom: 0.5rem;"></i>
+              <div style="font-size: 0.82rem;">Loading stored links catalog...</div>
+            </td>
+          </tr>
+        `;
+      }
       try {
         const search = (document.getElementById('linksSearchInput')?.value || '').trim();
         const platform = document.getElementById('linksPlatformFilter')?.value || '';
@@ -1862,7 +1925,7 @@
       const btn = document.getElementById(`check-btn-${linkId}`);
       if (btn) {
         btn.disabled = true;
-        btn.textContent = '...';
+        btn.innerHTML = '<i class="ri-loader-4-line spin" style="font-size: 13px;"></i>';
       }
 
       try {
