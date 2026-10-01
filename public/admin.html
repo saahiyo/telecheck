@@ -2153,6 +2153,90 @@
       loadStoredLinks();
     }
 
+    function renderLinkRowHtml(link) {
+      const isTelegram = link.platform === 'telegram';
+      const isStatusValid = link.status === 'valid';
+      const memberCountDisplay = link.member_count ? `${Number(link.member_count).toLocaleString()}` : (link.type || '-');
+      const checkedTime = link.checked_at ? new Date(link.checked_at).toLocaleDateString() : '-';
+      const contributorDisplay = link.contributor_username ? `@${escapeHtml(link.contributor_username)}` : '<span style="color:var(--text-muted)">Anon</span>';
+
+      // Platform Remix icon
+      const platIcon = isTelegram
+        ? `<i class="ri-telegram-fill" style="font-size: 16px; color: #60a5fa;" title="Telegram"></i>`
+        : `<i class="ri-cloud-fill" style="font-size: 16px; color: #fbbf24;" title="MEGA"></i>`;
+
+      return `
+        <tr id="link-row-${link.id}">
+          <!-- ID -->
+          <td class="mono" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
+            #${link.id}
+          </td>
+
+          <!-- Platform & Status Indicator -->
+          <td style="text-align: center;">
+            <div style="display: inline-flex; align-items: center; justify-content: center; position: relative;">
+              <span title="${escapeHtml(link.platform)}: ${escapeHtml(link.status)}">
+                ${platIcon}
+              </span>
+              <span class="status-dot ${isStatusValid ? 'status-dot-valid' : 'status-dot-invalid'}" style="position: absolute; bottom: -2px; right: -4px;" title="Status: ${escapeHtml(link.status)}"></span>
+            </div>
+          </td>
+
+          <!-- Channel / Target Title + External Link Redirect Icon -->
+          <td>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <div style="min-width: 0; flex: 1;">
+                <div style="font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;" title="${escapeHtml(link.title || link.url)}">
+                  ${escapeHtml(link.title || link.url)}
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--text-muted);">
+                  <span style="text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(link.type || link.platform)}</span>
+                  ${link.tags && link.tags.length ? `• <span>${link.tags.map(t => `#${escapeHtml(t)}`).join(' ')}</span>` : ''}
+                </div>
+              </div>
+
+              <!-- 1-Click Redirect Icon Button (No ugly raw URL text) -->
+              <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="platform-icon-btn" title="Open target: ${escapeHtml(link.url)}">
+                <i class="ri-external-link-line" style="font-size: 13px;"></i>
+              </a>
+            </div>
+          </td>
+
+          <!-- Members / Size -->
+          <td style="font-size: 0.8rem; font-weight: 600; color: #cbd5e1;">
+            ${memberCountDisplay}
+          </td>
+
+          <!-- Contributor -->
+          <td>
+            <span class="badge badge-neutral" style="cursor: pointer; transition: all 0.15s; font-size: 0.72rem;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='rgba(148,163,184,0.2)'" onclick="filterByContributorId(${link.contributor_id || "''"})" title="Click to filter by ${escapeHtml(link.contributor_username || 'this user')}">
+              ${contributorDisplay}
+            </span>
+          </td>
+
+          <!-- Checked Date -->
+          <td class="mono" style="font-size: 0.73rem; color: var(--text-muted);">
+            ${checkedTime}
+          </td>
+
+          <!-- Micro Action Buttons -->
+          <td style="text-align: right;">
+            <div style="display: inline-flex; gap: 0.35rem; align-items: center;">
+              <button class="btn-micro btn-micro-success" id="check-btn-${link.id}" onclick="recheckSingleLink(${link.id})" title="Re-check link live">
+                <i class="ri-check-line" style="font-size: 13px;"></i>
+              </button>
+              <button class="btn-micro" onclick="editLinkModal(${link.id})" title="Edit link status/title">
+                <i class="ri-edit-line" style="font-size: 13px;"></i>
+              </button>
+              <button class="btn-micro btn-micro-danger" onclick="deleteSingleLink(${link.id}, '${escapeHtml(link.url)}')" title="Delete from catalog">
+                <i class="ri-delete-bin-line" style="font-size: 13px;"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
     function renderStoredLinksTable() {
       const tbody = document.getElementById('linksTbody');
       if (!storedLinksData.length) {
@@ -2160,90 +2244,7 @@
         return;
       }
 
-      tbody.innerHTML = storedLinksData.map(link => {
-        const isTelegram = link.platform === 'telegram';
-        const isMEGA = link.platform === 'mega';
-        const isStatusValid = link.status === 'valid';
-        const memberCountDisplay = link.member_count ? `${Number(link.member_count).toLocaleString()}` : (link.type || '-');
-        const checkedTime = link.checked_at ? new Date(link.checked_at).toLocaleDateString() : '-';
-        const contributorDisplay = link.contributor_username ? `@${escapeHtml(link.contributor_username)}` : '<span style="color:var(--text-muted)">Anon</span>';
-
-        // Platform Remix icon
-        const platIcon = isTelegram
-          ? `<i class="ri-telegram-fill" style="font-size: 16px; color: #60a5fa;" title="Telegram"></i>`
-          : `<i class="ri-cloud-fill" style="font-size: 16px; color: #fbbf24;" title="MEGA"></i>`;
-
-        return `
-          <tr id="link-row-${link.id}">
-            <!-- ID -->
-            <td class="mono" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
-              #${link.id}
-            </td>
-
-            <!-- Platform & Status Indicator -->
-            <td style="text-align: center;">
-              <div style="display: inline-flex; align-items: center; justify-content: center; position: relative;">
-                <span title="${escapeHtml(link.platform)}: ${escapeHtml(link.status)}">
-                  ${platIcon}
-                </span>
-                <span class="status-dot ${isStatusValid ? 'status-dot-valid' : 'status-dot-invalid'}" style="position: absolute; bottom: -2px; right: -4px;" title="Status: ${escapeHtml(link.status)}"></span>
-              </div>
-            </td>
-
-            <!-- Channel / Target Title + External Link Redirect Icon -->
-            <td>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <div style="min-width: 0; flex: 1;">
-                  <div style="font-weight: 600; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 380px;" title="${escapeHtml(link.title || link.url)}">
-                    ${escapeHtml(link.title || link.url)}
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--text-muted);">
-                    <span style="text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(link.type || link.platform)}</span>
-                    ${link.tags && link.tags.length ? `• <span>${link.tags.map(t => `#${escapeHtml(t)}`).join(' ')}</span>` : ''}
-                  </div>
-                </div>
-
-                <!-- 1-Click Redirect Icon Button (No ugly raw URL text) -->
-                <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="platform-icon-btn" title="Open target: ${escapeHtml(link.url)}">
-                  <i class="ri-external-link-line" style="font-size: 13px;"></i>
-                </a>
-              </div>
-            </td>
-
-            <!-- Members / Size -->
-            <td style="font-size: 0.8rem; font-weight: 600; color: #cbd5e1;">
-              ${memberCountDisplay}
-            </td>
-
-            <!-- Contributor -->
-            <td>
-              <span class="badge badge-neutral" style="cursor: pointer; transition: all 0.15s; font-size: 0.72rem;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='rgba(148,163,184,0.2)'" onclick="filterByContributorId(${link.contributor_id || "''"})" title="Click to filter by ${escapeHtml(link.contributor_username || 'this user')}">
-                ${contributorDisplay}
-              </span>
-            </td>
-
-            <!-- Checked Date -->
-            <td class="mono" style="font-size: 0.73rem; color: var(--text-muted);">
-              ${checkedTime}
-            </td>
-
-            <!-- Micro Action Buttons -->
-            <td style="text-align: right;">
-              <div style="display: inline-flex; gap: 0.35rem; align-items: center;">
-                <button class="btn-micro btn-micro-success" id="check-btn-${link.id}" onclick="recheckSingleLink(${link.id})" title="Re-check link live">
-                  <i class="ri-check-line" style="font-size: 13px;"></i>
-                </button>
-                <button class="btn-micro" onclick="editLinkModal(${link.id})" title="Edit link status/title">
-                  <i class="ri-edit-line" style="font-size: 13px;"></i>
-                </button>
-                <button class="btn-micro btn-micro-danger" onclick="deleteSingleLink(${link.id}, '${escapeHtml(link.url)}')" title="Delete from catalog">
-                  <i class="ri-delete-bin-line" style="font-size: 13px;"></i>
-                </button>
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join('');
+      tbody.innerHTML = storedLinksData.map(renderLinkRowHtml).join('');
     }
 
     function updateLinksPagination() {
@@ -2285,11 +2286,28 @@
         if (!res.ok) throw new Error(data.error || 'Failed to check link');
 
         showToast(`Link #${linkId} rechecked: [${data.previous_status} → ${data.new_status}]`);
-        loadStoredLinks();
-        initDashboard();
+
+        // Update in-place without table reload
+        const link = storedLinksData.find(l => l.id === linkId);
+        if (link) {
+          link.status = data.new_status;
+          link.checked_at = new Date().toISOString();
+          if (data.metadata?.memberCount !== undefined) {
+            link.member_count = data.metadata.memberCount;
+          }
+          const row = document.getElementById(`link-row-${linkId}`);
+          if (row) {
+            row.outerHTML = renderLinkRowHtml(link);
+            const newRow = document.getElementById(`link-row-${linkId}`);
+            if (newRow) {
+              newRow.style.transition = 'background-color 0.4s ease';
+              newRow.style.backgroundColor = 'rgba(16, 185, 129, 0.12)';
+              setTimeout(() => { if (newRow) newRow.style.backgroundColor = ''; }, 1000);
+            }
+          }
+        }
       } catch (err) {
         alert(err.message);
-      } finally {
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = '<i class="ri-check-line" style="font-size: 13px;"></i>';
@@ -2325,7 +2343,23 @@
         if (!res.ok) throw new Error(data.error || 'Failed to update link');
 
         showToast(`Link #${linkId} updated successfully`);
-        loadStoredLinks();
+
+        // Update in-place without table reload
+        const updated = data.link || { ...link, status: cleanStatus, title: newTitle.trim() || link.title };
+        const idx = storedLinksData.findIndex(l => l.id === linkId);
+        if (idx !== -1) {
+          storedLinksData[idx] = { ...storedLinksData[idx], ...updated };
+        }
+        const row = document.getElementById(`link-row-${linkId}`);
+        if (row) {
+          row.outerHTML = renderLinkRowHtml(storedLinksData[idx] || updated);
+          const newRow = document.getElementById(`link-row-${linkId}`);
+          if (newRow) {
+            newRow.style.transition = 'background-color 0.4s ease';
+            newRow.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+            setTimeout(() => { if (newRow) newRow.style.backgroundColor = ''; }, 1000);
+          }
+        }
       } catch (err) {
         alert(err.message);
       }
@@ -2342,8 +2376,31 @@
         if (!res.ok) throw new Error(data.error || 'Failed to delete link');
 
         showToast(`Link #${linkId} deleted`);
-        loadStoredLinks();
-        initDashboard();
+
+        // In-place row removal with smooth fade out
+        const row = document.getElementById(`link-row-${linkId}`);
+        if (row) {
+          row.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(10px)';
+          setTimeout(() => {
+            if (row) row.remove();
+            const tbody = document.getElementById('linksTbody');
+            if (tbody && !tbody.children.length) {
+              tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 2.5rem; color: var(--text-muted);">No stored links matching your query or filter.</td></tr>';
+            }
+          }, 260);
+        }
+
+        // Update storedLinksData and total count in-place
+        const idx = storedLinksData.findIndex(l => l.id === linkId);
+        if (idx !== -1) {
+          storedLinksData.splice(idx, 1);
+        }
+        if (storedLinksTotal > 0) {
+          storedLinksTotal--;
+        }
+        updateLinksPagination();
       } catch (err) {
         alert(err.message);
       }
