@@ -1217,7 +1217,18 @@
       <!-- Tab: Contributors Table -->
       <div id="tabContributors" class="table-container" style="display: none;">
         <div style="padding: 1rem; border-bottom: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-          <input type="text" id="contributorSearchInput" onkeyup="filterContributorsTable()" placeholder="Search by username or email..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 280px;">
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="contributorSearchInput" onkeyup="filterContributorsTable()" placeholder="Search by username or email..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 260px;">
+            <div style="display: flex; align-items: center; gap: 0.4rem; background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.2rem 0.6rem;">
+              <i class="ri-time-line" style="color: var(--text-muted); font-size: 14px;"></i>
+              <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 500;">Period:</span>
+              <select id="contributorTimeframeSelect" onchange="changeContributorTimeframe()" style="background: transparent; border: none; color: #fff; font-size: 0.82rem; outline: none; cursor: pointer; padding: 0.25rem 0.2rem;">
+                <option value="all" style="background:#18181b; color:#fff;">All Time</option>
+                <option value="weekly" style="background:#18181b; color:#fff;">Past 7 Days (Weekly)</option>
+                <option value="daily" style="background:#18181b; color:#fff;">Past 24 Hours (Today)</option>
+              </select>
+            </div>
+          </div>
           <button class="btn btn-secondary" onclick="openReassignModal()" style="font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.4rem;">
             <i class="ri-arrow-left-right-line" style="font-size: 14px;"></i>
             <span>Reassign Links Between Users</span>
@@ -1748,6 +1759,13 @@
     }
 
     let allContributors = [];
+    let currentContributorTimeframe = 'all';
+
+    function changeContributorTimeframe() {
+      const select = document.getElementById('contributorTimeframeSelect');
+      currentContributorTimeframe = select ? select.value : 'all';
+      loadContributors();
+    }
 
     async function loadContributors() {
       const tbody = document.getElementById('contributorsTbody');
@@ -1756,13 +1774,13 @@
           <tr>
             <td colspan="7" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
               <i class="ri-loader-4-line spin" style="font-size: 22px; color: var(--primary); display: inline-block; margin-bottom: 0.5rem;"></i>
-              <div style="font-size: 0.82rem;">Loading contributors...</div>
+              <div style="font-size: 0.82rem;">Loading contributors (${currentContributorTimeframe})...</div>
             </td>
           </tr>
         `;
       }
       try {
-        const res = await adminFetch('/api/admin/contributors?limit=150');
+        const res = await adminFetch(`/api/admin/contributors?limit=150&timeframe=${encodeURIComponent(currentContributorTimeframe)}`);
         const data = await res.json();
         allContributors = data.contributors || [];
         populateContributorFilterOptions(allContributors);

@@ -39,6 +39,7 @@ export const initDB = async () => {
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS email TEXT`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS ban_reason TEXT`
+      await sql`ALTER TABLE links ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()`
       await sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS owner_uid TEXT`
       await sql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_firebase_uid
@@ -252,6 +253,15 @@ export const initDB = async () => {
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$
   `
+
+  // Add created_at column to links if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE links ADD COLUMN created_at TIMESTAMP DEFAULT NOW();
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+  await sql`UPDATE links SET created_at = checked_at WHERE created_at IS NULL`
 
   // ── Performance indexes ──
   // Trigram indexes match the substring ILIKE search used by getLinks/getLinkCount.
@@ -585,8 +595,47 @@ export const getContributorById = async (id: number) => {
 }
 
 
-export const getContributorLeaderboard = async (limit = 20, offset = 0) => {
+export type Timeframe = 'all' | 'weekly' | 'daily'
+
+export const getContributorLeaderboard = async (
+  limit = 20,
+  offset = 0,
+  timeframe: Timeframe = 'all'
+) => {
   const sql = getDb()
+
+  if (timeframe === 'daily') {
+    return sql`
+      SELECT
+        c.username,
+        COUNT(l.id) AS links_added,
+        c.first_seen,
+        COALESCE(MAX(l.checked_at), c.last_seen) as last_seen
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '24 hours'
+      GROUP BY c.id, c.username, c.first_seen, c.last_seen
+      ORDER BY COUNT(l.id) DESC, MAX(l.checked_at) DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
+  if (timeframe === 'weekly') {
+    return sql`
+      SELECT
+        c.username,
+        COUNT(l.id) AS links_added,
+        c.first_seen,
+        COALESCE(MAX(l.checked_at), c.last_seen) as last_seen
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '7 days'
+      GROUP BY c.id, c.username, c.first_seen, c.last_seen
+      ORDER BY COUNT(l.id) DESC, MAX(l.checked_at) DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
   return sql`
     SELECT
       c.username,
@@ -601,8 +650,29 @@ export const getContributorLeaderboard = async (limit = 20, offset = 0) => {
   `
 }
 
-export const getContributorCount = async () => {
+export const getContributorCount = async (timeframe: Timeframe = 'all') => {
   const sql = getDb()
+
+  if (timeframe === 'daily') {
+    const rows = await sql`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '24 hours'
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
+  if (timeframe === 'weekly') {
+    const rows = await sql`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '7 days'
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
   const rows = await sql`
     SELECT COUNT(*) as count
     FROM (
@@ -657,8 +727,57 @@ export const getContributorRankById = async (contributorId: number) => {
   return rows.length > 0 ? parseInt(rows[0].rank as string, 10) : null
 }
 
-export const getAllContributors = async (limit = 100, offset = 0) => {
+export const getAllContributors = async (
+  limit = 100,
+  offset = 0,
+  timeframe: Timeframe = 'all'
+) => {
   const sql = getDb()
+
+  if (timeframe === 'daily') {
+    return sql`
+      SELECT
+        c.id,
+        c.username,
+        c.email,
+        c.firebase_uid,
+        c.recovery_key,
+        c.is_banned,
+        c.ban_reason,
+        COUNT(l.id) AS links_added,
+        c.first_seen,
+        COALESCE(MAX(l.checked_at), c.last_seen) AS last_seen
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '24 hours'
+      GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.is_banned, c.ban_reason, c.first_seen, c.last_seen
+      ORDER BY COUNT(l.id) DESC, MAX(l.checked_at) DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
+  if (timeframe === 'weekly') {
+    return sql`
+      SELECT
+        c.id,
+        c.username,
+        c.email,
+        c.firebase_uid,
+        c.recovery_key,
+        c.is_banned,
+        c.ban_reason,
+        COUNT(l.id) AS links_added,
+        c.first_seen,
+        COALESCE(MAX(l.checked_at), c.last_seen) AS last_seen
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '7 days'
+      GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.is_banned, c.ban_reason, c.first_seen, c.last_seen
+      ORDER BY COUNT(l.id) DESC, MAX(l.checked_at) DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+  }
+
   return sql`
     SELECT
       c.id,
@@ -679,8 +798,29 @@ export const getAllContributors = async (limit = 100, offset = 0) => {
   `
 }
 
-export const getAllContributorsCount = async () => {
+export const getAllContributorsCount = async (timeframe: Timeframe = 'all') => {
   const sql = getDb()
+
+  if (timeframe === 'daily') {
+    const rows = await sql`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '24 hours'
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
+  if (timeframe === 'weekly') {
+    const rows = await sql`
+      SELECT COUNT(DISTINCT c.id) as count
+      FROM contributors c
+      JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+      WHERE COALESCE(l.created_at, l.checked_at) >= NOW() - INTERVAL '7 days'
+    `
+    return parseInt(rows[0].count as string, 10)
+  }
+
   const rows = await sql`SELECT COUNT(*) as count FROM contributors`
   return parseInt(rows[0].count as string, 10)
 }
@@ -777,8 +917,8 @@ export const saveLink = async (
   const isNewLink = existing.length === 0
 
   await sql`
-    INSERT INTO links (url, platform, status, title, description, image, type, member_count, raw_metadata, contributor_id)
-    VALUES (${url}, ${platform}, ${status}, ${title}, ${description}, ${image}, ${type}, ${memberCount}, ${JSON.stringify(metadata)}, ${contributorId || null})
+    INSERT INTO links (url, platform, status, title, description, image, type, member_count, raw_metadata, contributor_id, created_at, checked_at)
+    VALUES (${url}, ${platform}, ${status}, ${title}, ${description}, ${image}, ${type}, ${memberCount}, ${JSON.stringify(metadata)}, ${contributorId || null}, NOW(), NOW())
     ON CONFLICT (url) DO UPDATE SET
       platform = EXCLUDED.platform,
       status = EXCLUDED.status,

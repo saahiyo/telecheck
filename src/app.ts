@@ -782,15 +782,23 @@ app.get('/api/admin/contributors', async (c) => {
   const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200)
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
 
+  const rawTf = (c.req.query('timeframe') || c.req.query('period') || 'all').toLowerCase()
+  const timeframe = (rawTf === 'daily' || rawTf === 'today' || rawTf === 'day')
+    ? 'daily'
+    : (rawTf === 'weekly' || rawTf === 'week' || rawTf === '7d')
+    ? 'weekly'
+    : 'all'
+
   const [contributors, total] = await Promise.all([
-    getAllContributors(limit, offset),
-    getAllContributorsCount(),
+    getAllContributors(limit, offset, timeframe),
+    getAllContributorsCount(timeframe),
   ])
 
   return c.json({
     total,
     limit,
     offset,
+    timeframe,
     contributors,
   })
 })
@@ -1063,14 +1071,21 @@ app.get('/contributors', async (c) => {
   const limitQuery = c.req.query('limit') || '20'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const limit = Math.min(parseInt(limitQuery, 10) || 20, 100)
+  const rawTimeframe = (c.req.query('timeframe') || c.req.query('period') || 'all').toLowerCase()
+  const timeframe = (rawTimeframe === 'weekly' || rawTimeframe === 'week' || rawTimeframe === '7d')
+    ? 'weekly'
+    : (rawTimeframe === 'daily' || rawTimeframe === 'today' || rawTimeframe === 'day' || rawTimeframe === '24h')
+    ? 'daily'
+    : 'all'
 
-  const contributors = await getContributorLeaderboard(limit, offset)
-  const total = await getContributorCount()
+  const contributors = await getContributorLeaderboard(limit, offset, timeframe)
+  const total = await getContributorCount(timeframe)
 
   return c.json({
     total,
     limit,
     offset,
+    timeframe,
     contributors: contributors.map((c: any, i: number) => ({
       rank: offset + i + 1,
       username: c.username,
