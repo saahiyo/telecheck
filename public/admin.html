@@ -380,14 +380,18 @@
 
     /* Filter Inputs */
     .filter-ctrl {
-      background: #0d0d10;
+      background: #0e0e12;
       border: 1px solid var(--surface-border);
-      border-radius: 8px;
-      padding: 0.45rem 0.75rem;
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
       color: var(--text);
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       font-family: inherit;
-      transition: all 0.2s;
+      transition: all 0.15s;
+      height: 32px;
+    }
+    .filter-ctrl:hover {
+      border-color: #3f3f46;
     }
     .filter-ctrl:focus {
       outline: none;
@@ -717,63 +721,68 @@
       <!-- Tab: Stored Links & Moderation -->
       <div id="tabLinks" class="table-container">
         <!-- Filter and Search Toolbar -->
-        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--surface-border); display: flex; flex-direction: column; gap: 0.85rem; background: #111114;">
-          <!-- Top Row: Filters & Inputs -->
-          <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
-            <div style="position: relative; flex: 1; min-width: 240px;">
-              <input type="text" id="linksSearchInput" onkeydown="if(event.key==='Enter') applyLinksFilter()" placeholder="Search URL, channel name, or keywords..." class="filter-ctrl" style="width: 100%; padding-left: 2rem;">
-              <i class="ri-search-line" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px;"></i>
+        <!-- Filter and Search Toolbar (Compact Single Unified Bar) -->
+        <div style="padding: 0.65rem 1rem; border-bottom: 1px solid var(--surface-border); display: flex; flex-direction: column; gap: 0.5rem; background: #111114;">
+          <!-- Top Row: Search & Filters -->
+          <div style="display: flex; gap: 0.45rem; align-items: center; flex-wrap: wrap;">
+            <!-- Search Input -->
+            <div style="position: relative; flex: 1; min-width: 220px;">
+              <input type="text" id="linksSearchInput" onkeydown="if(event.key==='Enter') applyLinksFilter()" placeholder="Search title, URL, keywords..." class="filter-ctrl" style="width: 100%; padding-left: 1.85rem;">
+              <i class="ri-search-line" style="position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px;"></i>
             </div>
 
             <!-- Platform Filter -->
-            <select id="linksPlatformFilter" onchange="applyLinksFilter()" class="filter-ctrl">
-              <option value="">Platform: All</option>
+            <select id="linksPlatformFilter" onchange="applyLinksFilter()" class="filter-ctrl" style="min-width: 100px;">
+              <option value="">Platform</option>
               <option value="telegram">Telegram</option>
               <option value="mega">MEGA</option>
             </select>
 
             <!-- Status Filter -->
-            <select id="linksStatusFilter" onchange="applyLinksFilter()" class="filter-ctrl">
-              <option value="">Status: All</option>
-              <option value="valid">Valid Only</option>
-              <option value="invalid">Invalid Only</option>
+            <select id="linksStatusFilter" onchange="applyLinksFilter()" class="filter-ctrl" style="min-width: 90px;">
+              <option value="">Status</option>
+              <option value="valid">Valid</option>
+              <option value="invalid">Invalid</option>
             </select>
 
             <!-- Contributor Filter Dropdown -->
-            <select id="linksContributorFilter" onchange="applyLinksFilter()" class="filter-ctrl" style="max-width: 180px;">
-              <option value="">All Contributors</option>
+            <select id="linksContributorFilter" onchange="applyLinksFilter()" class="filter-ctrl" style="max-width: 150px;">
+              <option value="">Contributor</option>
             </select>
 
             <!-- Sorting Dropdown -->
-            <select id="linksSortBy" onchange="applyLinksFilter()" class="filter-ctrl">
-              <option value="checked_at">Sort: Last Checked</option>
-              <option value="member_count">Sort: Members / Size</option>
-              <option value="title">Sort: Title</option>
-              <option value="id">Sort: Link ID</option>
+            <select id="linksSortBy" onchange="applyLinksFilter()" class="filter-ctrl" style="min-width: 110px;">
+              <option value="checked_at">Checked</option>
+              <option value="member_count">Members</option>
+              <option value="title">Title</option>
+              <option value="id">ID</option>
             </select>
 
-            <!-- Order Direction -->
-            <select id="linksSortOrder" onchange="applyLinksFilter()" class="filter-ctrl">
-              <option value="desc">Desc ↓</option>
-              <option value="asc">Asc ↑</option>
-            </select>
+            <!-- Order Direction Toggle Button -->
+            <input type="hidden" id="linksSortOrder" value="desc">
+            <button class="filter-ctrl" id="linksSortOrderBtn" onclick="toggleLinksSortOrder()" title="Toggle sort direction (Desc / Asc)" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem; padding: 0 0.6rem; cursor: pointer;">
+              <i id="linksSortOrderIcon" class="ri-sort-desc" style="font-size: 14px;"></i>
+              <span id="linksSortOrderText" style="font-size: 0.75rem; font-weight: 600;">Desc</span>
+            </button>
 
-            <button class="btn" onclick="applyLinksFilter()" style="padding: 0.45rem 0.9rem; font-size: 0.82rem;">
-              Search
+            <!-- Search Action Button -->
+            <button class="btn" onclick="applyLinksFilter()" style="padding: 0 0.85rem; height: 32px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+              <i class="ri-search-line" style="font-size: 13px;"></i>
+              <span>Filter</span>
             </button>
           </div>
 
-          <!-- Bottom Row: Meta summary & actions -->
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 0.6rem;">
-              <span class="badge badge-neutral" id="linksTotalCountDisplay">0 links</span>
-              <span style="font-size: 0.75rem; color: var(--text-muted);">Click any @contributor tag to quick-filter</span>
+          <!-- Bottom Row: Meta summary badge & Action -->
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; font-size: 0.75rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted);">
+              <span class="badge badge-neutral" id="linksTotalCountDisplay" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;">0 links</span>
+              <span>Tip: Click any <code>@user</code> in the table to isolate their contributions.</span>
             </div>
 
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <button class="btn btn-secondary" onclick="exportLinksJson()" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; display: inline-flex; align-items: center; gap: 0.4rem;">
-                <i class="ri-download-2-line" style="font-size: 14px;"></i>
-                Export JSON
+            <div>
+              <button class="btn btn-secondary" onclick="exportLinksJson()" style="font-size: 0.75rem; padding: 0 0.65rem; height: 26px; display: inline-flex; align-items: center; gap: 0.35rem;">
+                <i class="ri-download-2-line" style="font-size: 13px;"></i>
+                <span>Export JSON</span>
               </button>
             </div>
           </div>
@@ -1691,6 +1700,24 @@
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger); text-align: center;">Error loading links: ${escapeHtml(err.message)}</td></tr>`;
       }
+    }
+
+    function toggleLinksSortOrder() {
+      const input = document.getElementById('linksSortOrder');
+      const icon = document.getElementById('linksSortOrderIcon');
+      const text = document.getElementById('linksSortOrderText');
+      if (!input) return;
+
+      if (input.value === 'desc') {
+        input.value = 'asc';
+        if (text) text.textContent = 'Asc';
+        if (icon) icon.className = 'ri-sort-asc';
+      } else {
+        input.value = 'desc';
+        if (text) text.textContent = 'Desc';
+        if (icon) icon.className = 'ri-sort-desc';
+      }
+      applyLinksFilter();
     }
 
     function applyLinksFilter() {
