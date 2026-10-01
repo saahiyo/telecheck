@@ -18,6 +18,7 @@ import {
   getContributorLeaderboard,
   getContributorCount,
   getContributorByIdentity,
+  getContributorById,
   getContributorRankById,
   getContributorActiveLinkCount,
   updateLinkTags,
@@ -135,7 +136,11 @@ const requireFirebaseUser = async (c: any) => {
   if (!isAdmin(firebaseUser)) {
     try {
       await ensureDbReady()
-      const contributor = await getContributorByFirebaseUid(firebaseUser.uid)
+      let contributor = await getContributorByFirebaseUid(firebaseUser.uid)
+      if (!contributor) {
+        const identity = await getContributorIdentityInput(c)
+        contributor = await getContributorByIdentity(identity)
+      }
       if (contributor?.is_banned) {
         return c.json({
           error: 'Your contributor account has been suspended.',

@@ -569,6 +569,13 @@ export const getContributorByDeviceId = async (deviceId: string) => {
   return rows.length > 0 ? rows[0] : null
 }
 
+export const getContributorById = async (id: number) => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM contributors WHERE id = ${id} LIMIT 1`
+  return rows.length > 0 ? rows[0] : null
+}
+
+
 export const getContributorLeaderboard = async (limit = 20, offset = 0) => {
   const sql = getDb()
   return sql`
