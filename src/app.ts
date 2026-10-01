@@ -142,8 +142,10 @@ const requireFirebaseUser = async (c: any) => {
         contributor = await getContributorByIdentity(identity)
       }
       if (contributor?.is_banned) {
+        const reason = contributor.ban_reason || 'Your account has been suspended by an administrator.'
         return c.json({
-          error: 'Your account has been suspended by an administrator.',
+          error: reason,
+          reason,
           banned: true,
           status: 'suspended',
           contact: '@saahiyo'
@@ -826,14 +828,15 @@ app.patch('/api/admin/contributors/:id/ban', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (!id) return c.json({ error: 'Invalid contributor ID' }, 400)
 
-  const body = (await c.req.json().catch(() => ({}))) as { is_banned?: boolean }
+  const body = (await c.req.json().catch(() => ({}))) as { is_banned?: boolean; ban_reason?: string }
   const isBanned = Boolean(body.is_banned)
+  const banReason = typeof body.ban_reason === 'string' && body.ban_reason.trim() ? body.ban_reason.trim() : null
 
   await ensureDbReady()
-  const updated = await setContributorBanStatus(id, isBanned)
+  const updated = await setContributorBanStatus(id, isBanned, banReason)
   if (!updated) return c.json({ error: 'Contributor not found' }, 404)
 
-  return c.json({ success: true, id, is_banned: isBanned })
+  return c.json({ success: true, id, is_banned: isBanned, ban_reason: banReason })
 })
 
 app.post('/api/admin/contributors/:id/reset-key', async (c) => {

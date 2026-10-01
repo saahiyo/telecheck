@@ -38,6 +38,7 @@ export const initDB = async () => {
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS firebase_uid TEXT`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS email TEXT`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false`
+      await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS ban_reason TEXT`
       await sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS owner_uid TEXT`
       await sql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_firebase_uid
@@ -240,6 +241,14 @@ export const initDB = async () => {
   await sql`
     DO $$ BEGIN
       ALTER TABLE contributors ADD COLUMN is_banned BOOLEAN DEFAULT false;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+
+  // Add ban_reason column to contributors if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN ban_reason TEXT;
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$
   `
@@ -658,12 +667,13 @@ export const getAllContributors = async (limit = 100, offset = 0) => {
       c.firebase_uid,
       c.recovery_key,
       c.is_banned,
+      c.ban_reason,
       COUNT(l.id) AS links_added,
       c.first_seen,
       c.last_seen
     FROM contributors c
     LEFT JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
-    GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.is_banned, c.first_seen, c.last_seen
+    GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.is_banned, c.ban_reason, c.first_seen, c.last_seen
     ORDER BY c.last_seen DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -698,11 +708,13 @@ export const resetContributorRecoveryKey = async (id: number): Promise<string | 
   return rows.length > 0 ? (rows[0].recovery_key as string) : null
 }
 
-export const setContributorBanStatus = async (id: number, isBanned: boolean): Promise<boolean> => {
+export const setContributorBanStatus = async (id: number, isBanned: boolean, banReason: string | null = null): Promise<boolean> => {
   const sql = getDb()
   const rows = await sql`
     UPDATE contributors
-    SET is_banned = ${isBanned}, last_seen = NOW()
+    SET is_banned = ${isBanned},
+        ban_reason = ${isBanned ? banReason : null},
+        last_seen = NOW()
     WHERE id = ${id}
     RETURNING id
   `

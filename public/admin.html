@@ -234,6 +234,202 @@
       display: none;
     }
 
+    /* Banned / Suspended Modal & Banner */
+    .banned-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 9, 11, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 1.5rem;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .banned-card {
+      position: relative;
+      background: linear-gradient(180deg, #18181c 0%, #101014 100%);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 480px;
+      padding: 2.25rem 2rem;
+      text-align: center;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 35px -5px rgba(239, 68, 68, 0.15);
+      animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      overflow: hidden;
+    }
+
+    .banned-glow-effect {
+      position: absolute;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 120px;
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .banned-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+
+    .banned-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: #f87171;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1.2rem;
+    }
+
+    .banned-badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 8px #ef4444;
+      animation: pulse 1.8s infinite;
+    }
+
+    .banned-icon-wrap {
+      width: 64px;
+      height: 64px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      color: #ef4444;
+      box-shadow: 0 0 20px -3px rgba(239, 68, 68, 0.2);
+    }
+
+    .banned-card h2 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.35rem;
+      letter-spacing: -0.02em;
+    }
+
+    .banned-lead {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .banned-details-box {
+      background: rgba(9, 9, 11, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 0.9rem 1.15rem;
+      text-align: left;
+      margin: 1.25rem 0 1rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .banned-detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.82rem;
+    }
+
+    .banned-detail-label {
+      color: #71717a;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .banned-status-tag {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .banned-detail-value {
+      color: #f4f4f5;
+      font-weight: 500;
+      text-align: right;
+      word-break: break-word;
+    }
+
+    .banned-detail-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #a1a1aa;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+    }
+
+    .banned-notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      text-align: left;
+      font-size: 0.78rem;
+      color: #71717a;
+      line-height: 1.45;
+      margin-bottom: 1.25rem;
+      padding: 0 0.25rem;
+    }
+
+    .banned-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .btn-contact-telegram {
+      background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      color: #ffffff;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 10px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+    }
+
+    .btn-contact-telegram:hover {
+      background: linear-gradient(135deg, #0369a1 0%, #1d4ed8 100%);
+      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+      transform: translateY(-1px);
+      color: #ffffff;
+    }
+
     /* Main container */
     .container {
       max-width: 1200px;
@@ -713,23 +909,110 @@
     </div>
   </div>
 
-  <!-- Account Suspended / Banned Overlay -->
-  <div id="bannedPromptOverlay" class="login-overlay" style="display: none; z-index: 10000; background: rgba(9, 9, 11, 0.96);">
-    <div class="login-card" style="border-color: rgba(239, 68, 68, 0.4); text-align: center; max-width: 460px; box-shadow: 0 25px 60px -15px rgba(239, 68, 68, 0.25);">
-      <div style="width: 64px; height: 64px; background: rgba(239, 68, 68, 0.12); border: 2px solid rgba(239, 68, 68, 0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto; color: #ef4444;">
-        <i class="ri-forbid-line" style="font-size: 32px;"></i>
+  <!-- Modal: Suspend Contributor (Reason selection) -->
+  <div id="banContributorModal" class="login-overlay" style="display: none; z-index: 9999;">
+    <div class="login-card" style="max-width: 480px; text-align: left; border-color: rgba(239, 68, 68, 0.4);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); color: #ef4444; display: flex; align-items: center; justify-content: center;">
+            <i class="ri-user-unfollow-line" style="font-size: 18px;"></i>
+          </div>
+          <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0;">Suspend Contributor</h3>
+        </div>
+        <button type="button" onclick="closeBanModal()" style="border: none; background: transparent; font-size: 1.25rem; cursor: pointer; color: var(--text-muted);">&times;</button>
       </div>
-      <h2 style="color: #ffffff; margin-bottom: 0.5rem;">Account Suspended</h2>
-      <p id="bannedPromptReason" style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.55; margin-bottom: 1.5rem;">
-        Your contributor account has been suspended by an administrator. Access to the admin dashboard and link features has been revoked.
+
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.2rem; line-height: 1.45;">
+        Suspending <strong id="banModalTargetUser" style="color: var(--text);">Contributor</strong> will immediately disable link verification and submission capabilities.
       </p>
 
-      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-        <a href="https://t.me/saahiyo" target="_blank" rel="noopener noreferrer" class="btn" id="adminContactBtn" style="justify-content: center; padding: 0.75rem; background: #2563eb; color: #fff; text-decoration: none; font-size: 0.9rem; border-radius: 8px;">
-          <i class="ri-telegram-fill" style="font-size: 16px;"></i>
+      <div class="form-group" style="margin-bottom: 0.9rem;">
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.5rem; display: block;">Select Suspension Reason</label>
+        <div style="display: flex; flex-direction: column; gap: 0.45rem;" id="banPresetOptions">
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="Abnormal request volume / Automated spamming" checked onchange="handleBanPresetChange(this)">
+            <span>Abnormal request volume / Automated spamming</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="Submitting invalid, deceptive, or malicious links" onchange="handleBanPresetChange(this)">
+            <span>Submitting invalid, deceptive, or malicious links</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="Multiple accounts / Sybil policy violation" onchange="handleBanPresetChange(this)">
+            <span>Multiple accounts / Sybil policy violation</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="API abuse / Circumventing platform rate limits" onchange="handleBanPresetChange(this)">
+            <span>API abuse / Circumventing platform rate limits</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="Violation of platform Terms of Service" onchange="handleBanPresetChange(this)">
+            <span>Violation of platform Terms of Service</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--surface-border); border-radius: 8px; cursor: pointer; font-size: 0.83rem;">
+            <input type="radio" name="banReasonPreset" value="__CUSTOM__" onchange="handleBanPresetChange(this)">
+            <span>Custom reason...</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group" id="banCustomReasonGroup" style="display: none; margin-bottom: 1.15rem;">
+        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.35rem; display: block;">Custom Suspension Reason</label>
+        <input type="text" id="banCustomReasonInput" class="input" placeholder="e.g. Account suspended pending identity verification." style="width: 100%; font-size: 0.85rem;" maxlength="200">
+      </div>
+
+      <div style="display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.25rem;">
+        <button type="button" class="btn btn-secondary" onclick="closeBanModal()" style="padding: 0.55rem 1rem; font-size: 0.85rem;">Cancel</button>
+        <button type="button" class="btn" id="confirmBanBtn" onclick="confirmBanSubmit()" style="background: #ef4444; border-color: #dc2626; padding: 0.55rem 1.25rem; font-size: 0.85rem; color: #fff;">
+          <i class="ri-forbid-line"></i> Confirm Suspension
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Suspended / Banned Overlay -->
+  <div id="bannedPromptOverlay" class="banned-overlay" style="display: none;">
+    <div class="banned-card">
+      <div class="banned-glow-effect"></div>
+
+      <div class="banned-header">
+        <div class="banned-badge">
+          <span class="banned-badge-dot"></span>
+          ACCESS RESTRICTED
+        </div>
+        <div class="banned-icon-wrap">
+          <i class="ri-forbid-line" style="font-size: 28px;"></i>
+        </div>
+        <h2>Account Suspended</h2>
+        <p class="banned-lead">Your contributor account has been suspended by an administrator. Access to the admin dashboard and link features has been revoked.</p>
+      </div>
+
+      <div class="banned-details-box">
+        <div class="banned-detail-row">
+          <span class="banned-detail-label">Status</span>
+          <span class="banned-status-tag">Suspended</span>
+        </div>
+        <div class="banned-detail-row">
+          <span class="banned-detail-label">Reason</span>
+          <span class="banned-detail-value" id="bannedPromptReason">Suspended by Administrator</span>
+        </div>
+        <div class="banned-detail-row">
+          <span class="banned-detail-label">Appeal Reference</span>
+          <span class="banned-detail-code" id="adminBannedCaseId">#TC-ADMIN</span>
+        </div>
+      </div>
+
+      <div class="banned-notice">
+        <i class="ri-information-line" style="font-size: 16px; margin-top: 1px; color: #a1a1aa;"></i>
+        <span>If you believe this administrative suspension was placed in error, please reach out directly on Telegram.</span>
+      </div>
+
+      <div class="banned-actions">
+        <a href="https://t.me/saahiyo" target="_blank" rel="noopener noreferrer" class="btn-contact-telegram" id="adminContactBtn">
+          <i class="ri-telegram-fill" style="font-size: 18px;"></i>
           <span>Contact Admin (@saahiyo)</span>
         </a>
-        <button class="btn btn-secondary" onclick="logout()" style="justify-content: center; padding: 0.65rem; font-size: 0.85rem;">
+        <button type="button" class="btn btn-secondary" onclick="logout()" style="justify-content: center; padding: 0.65rem; font-size: 0.85rem; border-radius: 10px;">
           <i class="ri-logout-box-r-line" style="font-size: 15px;"></i>
           <span>Log Out</span>
         </button>
@@ -1216,15 +1499,21 @@
       const overlay = document.getElementById('bannedPromptOverlay');
       const reasonEl = document.getElementById('bannedPromptReason');
       const contactBtn = document.getElementById('adminContactBtn');
+      const caseIdEl = document.getElementById('adminBannedCaseId');
 
       if (reasonEl && message) {
         reasonEl.textContent = message;
+      }
+      if (caseIdEl && (!caseIdEl.dataset.initialized || caseIdEl.textContent.includes('ADMIN'))) {
+        const randomRef = Math.random().toString(36).substring(2, 8).toUpperCase();
+        caseIdEl.textContent = `#TC-${randomRef}`;
+        caseIdEl.dataset.initialized = 'true';
       }
       if (contactBtn && contactHandle) {
         const clean = contactHandle.replace(/^@/, '');
         contactBtn.href = `https://t.me/${clean}`;
         contactBtn.innerHTML = `
-          <i class="ri-telegram-fill" style="font-size: 16px;"></i>
+          <i class="ri-telegram-fill" style="font-size: 18px;"></i>
           <span>Contact Admin (${contactHandle})</span>
         `;
       }
@@ -1500,14 +1789,15 @@
           <td>${c.email ? `<span class="badge badge-primary">${c.email}</span>` : '<span style="color:var(--text-muted)">Anonymous</span>'}</td>
           <td>
             ${c.is_banned 
-              ? '<span class="badge" style="background:rgba(239,68,68,0.2); color:#f87171;">BANNED</span>' 
+              ? `<span class="badge" style="background:rgba(239,68,68,0.2); color:#f87171;">BANNED</span>
+                 ${c.ban_reason ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:0.3rem; line-height:1.3; max-width:190px; word-break:break-word;">Reason: ${escapeHtml(c.ban_reason)}</div>` : ''}` 
               : '<span class="badge badge-success">ACTIVE</span>'}
           </td>
           <td><strong>${c.links_added || 0}</strong></td>
           <td>${new Date(c.last_seen).toLocaleString()}</td>
           <td>
             <div style="display: flex; gap: 0.35rem; align-items: center;">
-              <button class="btn btn-secondary" onclick="toggleBanContributor(${c.id}, ${!c.is_banned})" style="padding: 0.25rem 0.5rem; font-size: 0.72rem; ${c.is_banned ? 'color: var(--success);' : 'color: var(--danger);'}">
+              <button class="btn btn-secondary" onclick="handleBanClick(${c.id}, ${Boolean(c.is_banned)}, '${escapeHtml(c.username || 'Contributor #' + c.id)}')" style="padding: 0.25rem 0.5rem; font-size: 0.72rem; ${c.is_banned ? 'color: var(--success);' : 'color: var(--danger);'}">
                 ${c.is_banned ? 'Unban' : 'Ban'}
               </button>
               <button class="btn btn-secondary" onclick="resetRecoveryKey(${c.id})" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" title="Generate new recovery key">
@@ -1617,20 +1907,113 @@
       }
     }
 
-    async function toggleBanContributor(id, shouldBan) {
-      const action = shouldBan ? 'ban' : 'unban';
-      if (!confirm(`Are you sure you want to ${action} contributor #${id}?`)) return;
+    let activeBanTargetId = null;
+
+    function handleBanClick(id, isBanned, username) {
+      if (isBanned) {
+        unbanContributor(id, username);
+      } else {
+        openBanModal(id, username);
+      }
+    }
+
+    function toggleBanContributor(id, shouldBan) {
+      handleBanClick(id, !shouldBan, `Contributor #${id}`);
+    }
+
+    function openBanModal(id, username) {
+      activeBanTargetId = id;
+      const targetUserEl = document.getElementById('banModalTargetUser');
+      if (targetUserEl) {
+        targetUserEl.textContent = `${username} (#${id})`;
+      }
+      // Reset preset radio to first
+      const defaultRadio = document.querySelector('input[name="banReasonPreset"][value="Abnormal request volume / Automated spamming"]');
+      if (defaultRadio) defaultRadio.checked = true;
+
+      const customGroup = document.getElementById('banCustomReasonGroup');
+      const customInput = document.getElementById('banCustomReasonInput');
+      if (customGroup) customGroup.style.display = 'none';
+      if (customInput) customInput.value = '';
+
+      const modal = document.getElementById('banContributorModal');
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function closeBanModal() {
+      activeBanTargetId = null;
+      const modal = document.getElementById('banContributorModal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function handleBanPresetChange(radio) {
+      const customGroup = document.getElementById('banCustomReasonGroup');
+      const customInput = document.getElementById('banCustomReasonInput');
+      if (radio.value === '__CUSTOM__') {
+        if (customGroup) customGroup.style.display = 'block';
+        if (customInput) customInput.focus();
+      } else {
+        if (customGroup) customGroup.style.display = 'none';
+      }
+    }
+
+    async function confirmBanSubmit() {
+      if (!activeBanTargetId) return;
+      const id = activeBanTargetId;
+      const selectedRadio = document.querySelector('input[name="banReasonPreset"]:checked');
+      let reason = selectedRadio ? selectedRadio.value : 'Abnormal request volume / Automated spamming';
+
+      if (reason === '__CUSTOM__') {
+        const customVal = document.getElementById('banCustomReasonInput')?.value?.trim();
+        if (!customVal) {
+          alert('Please enter a custom suspension reason.');
+          document.getElementById('banCustomReasonInput')?.focus();
+          return;
+        }
+        reason = customVal;
+      }
+
+      const btn = document.getElementById('confirmBanBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Suspending...';
+      }
 
       try {
         const res = await adminFetch(`/api/admin/contributors/${id}/ban`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ is_banned: shouldBan })
+          body: JSON.stringify({ is_banned: true, ban_reason: reason })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to update ban status');
+        if (!res.ok) throw new Error(data.error || 'Failed to suspend contributor');
 
-        showToast(`Contributor #${id} is now ${shouldBan ? 'banned' : 'active'}!`);
+        showToast(`Contributor #${id} has been suspended.`);
+        closeBanModal();
+        loadContributors();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="ri-forbid-line"></i> Confirm Suspension';
+        }
+      }
+    }
+
+    async function unbanContributor(id, username) {
+      if (!confirm(`Are you sure you want to lift the suspension for ${username} (#${id})?`)) return;
+
+      try {
+        const res = await adminFetch(`/api/admin/contributors/${id}/ban`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_banned: false })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to lift suspension');
+
+        showToast(`Suspension lifted for Contributor #${id}!`);
         loadContributors();
       } catch (err) {
         alert(err.message);
