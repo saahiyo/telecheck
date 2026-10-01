@@ -156,7 +156,7 @@
       font-weight: 500;
       border-radius: 8px;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1), scale 320ms cubic-bezier(0.2, 0, 0, 1);
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -169,8 +169,31 @@
     }
 
     button:active:not(:disabled) {
-      transform: translateY(1px);
+      scale: 0.97;
+      transition-duration: 120ms;
       box-shadow: none;
+    }
+
+    /* Cube-motion morph faces helper */
+    .faces {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .faces > * {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      will-change: opacity, filter, scale;
+      font-style: normal;
+    }
+    .faces > .inactive {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
     }
 
     button:disabled {
@@ -279,10 +302,7 @@
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
-      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      opacity: 0;
       border: 1px solid transparent;
-      transform: translateY(10px);
       position: relative;
     }
 
@@ -693,7 +713,12 @@
         <div class="btn-group">
           <button class="btn-secondary" onclick="clearInput()" id="clearBtn" title="Clear input">Clear</button>
           <button id="checkBtn" onclick="checkLinks()">
-            <span id="btnText">Verify Links</span>
+            <span class="faces" id="btnFaces">
+              <span id="btnOff">Verify Links</span>
+              <span id="btnOn" class="inactive" aria-hidden="true" inert>
+                Checking...
+              </span>
+            </span>
             <div class="loader" id="loader"></div>
           </button>
         </div>
@@ -703,8 +728,17 @@
     <div class="results" id="results"></div>
   </div>
 
-  <script>
+  <script type="module">
+    import { rise, leave, morph, reveal } from "./vendor/index.js";
+
     const API_BASE = "https://telecheck.vercel.app";
+
+    // Entrance animation for header and input group on initial load
+    try {
+      rise(".container > header, .input-group", { stagger: 70 });
+    } catch (e) {
+      console.warn("Cube rise initialization skipped:", e);
+    }
 
     // Support keyboard shortcut (Ctrl/Cmd + Enter)
     document.getElementById('linksInput').addEventListener('keydown', function(e) {
@@ -714,18 +748,29 @@
       }
     });
 
-    function clearInput() {
+    window.clearInput = function() {
       const inputEl = document.getElementById('linksInput');
       inputEl.value = '';
       inputEl.focus();
       document.getElementById('inputError').style.display = 'none';
-      document.getElementById('results').innerHTML = ''; // Optionally clear results on reset
-    }
+      const resultsContainer = document.getElementById('results');
+      if (resultsContainer.children.length > 0) {
+        try {
+          const leaves = leave(resultsContainer.children, { stagger: 30 });
+          Promise.all(leaves.map(a => a.finished)).then(() => {
+            resultsContainer.innerHTML = '';
+          }).catch(err => {
+            if (err.name !== 'AbortError') resultsContainer.innerHTML = '';
+          });
+        } catch {
+          resultsContainer.innerHTML = '';
+        }
+      }
+    };
 
-    function copyToClipboard(text, btn) {
+    window.copyToClipboard = function(text, btn) {
       navigator.clipboard.writeText(text).then(() => {
         const originalHTML = btn.innerHTML;
-        // Checkmark icon
         btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
         btn.style.color = "var(--valid-text)";
         setTimeout(() => {
@@ -733,36 +778,45 @@
           btn.style.color = "";
         }, 1500);
       });
-    }
+    };
 
-    function filterResults(type) {
+    window.filterResults = function(type) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.getElementById(`tab-${type}`).classList.add('active');
+      const activeTab = document.getElementById(`tab-${type}`);
+      if (activeTab) activeTab.classList.add('active');
       
       const cards = document.querySelectorAll('.card');
+      const shownCards = [];
       cards.forEach(c => {
-        if (type === 'all') {
+        if (type === 'all' || c.classList.contains(type)) {
           c.style.display = 'flex';
-          c.style.animation = 'none'; // reset animation to avoid glitch
+          shownCards.push(c);
         } else {
-          if (c.classList.contains(type)) {
-            c.style.display = 'flex';
-          } else {
-            c.style.display = 'none';
-          }
+          c.style.display = 'none';
         }
       });
-    }
 
-    async function checkLinks() {
+      if (shownCards.length > 0) {
+        try {
+          rise(shownCards, { stagger: 35 });
+        } catch {}
+      }
+    };
+
+    let isChecking = false;
+
+    window.checkLinks = async function() {
+      if (isChecking) return;
+
       const inputEl = document.getElementById("linksInput");
       const input = inputEl.value.trim();
       const loader = document.getElementById("loader");
-      const btnText = document.getElementById("btnText");
       const checkBtn = document.getElementById("checkBtn");
       const clearBtn = document.getElementById("clearBtn");
       const resultsContainer = document.getElementById("results");
       const inputError = document.getElementById("inputError");
+      const btnOff = document.getElementById("btnOff");
+      const btnOn = document.getElementById("btnOn");
 
       if (!input) {
         inputError.style.display = "block";
@@ -771,11 +825,17 @@
       }
       
       inputError.style.display = "none";
+      isChecking = true;
       checkBtn.disabled = true;
       clearBtn.disabled = true;
-      btnText.textContent = "Checking...";
       loader.style.display = "block";
-      resultsContainer.innerHTML = "";
+
+      // Morph button text: "Verify Links" -> "Checking..."
+      try {
+        morph(btnOff, btnOn);
+      } catch (e) {
+        btnOff.textContent = "Checking...";
+      }
 
       const links = input.split("\n").map(l => l.trim()).filter(Boolean);
 
@@ -807,11 +867,10 @@
 
         const { valid, invalid, unknown } = data.groups;
 
-        // SVG string for the copy icon
         const copySvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
 
-        const buildCard = (item, cls, index) => `
-          <div class="card ${cls}" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s">
+        const buildCard = (item, cls) => `
+          <div class="card ${cls}">
             <button class="copy-btn" onclick="copyToClipboard('${item.url}', this)" title="Copy link">
                ${copySvg}
             </button>
@@ -840,33 +899,58 @@
             <div class="cards-container">
            `;
            
-           let index = 0;
-           html += valid.map(v => buildCard(v, "valid", ++index)).join("");
-           html += invalid.map(v => buildCard(v, "invalid", ++index)).join("");
-           html += unknown.map(v => buildCard(v, "unknown", ++index)).join("");
+           html += valid.map(v => buildCard(v, "valid")).join("");
+           html += invalid.map(v => buildCard(v, "invalid")).join("");
+           html += unknown.map(v => buildCard(v, "unknown")).join("");
            
            html += `</div>`;
         }
 
         resultsContainer.innerHTML = html;
 
+        // Animate results container & cards using Cube motion rise and reveal
+        try {
+          const cards = resultsContainer.querySelectorAll('.card');
+          if (cards.length > 0) {
+            rise('.results-header, .tabs', { stagger: 40 });
+            // Use rise with stagger for cards in view, and reveal for scrollable overflow
+            rise(Array.from(cards).slice(0, 8), { stagger: 50 });
+            if (cards.length > 8) {
+              reveal(Array.from(cards).slice(8));
+            }
+          } else {
+            rise(resultsContainer.children, { stagger: 40 });
+          }
+        } catch (e) {
+          console.warn("Cube results animation skipped:", e);
+        }
+
       } catch (err) {
         resultsContainer.innerHTML = `<div class="error-state">${escapeHtml(err.message || 'Failed to check links. Please try again later.')}</div>`;
+        try {
+          rise(resultsContainer.children);
+        } catch {}
         console.error(err);
       } finally {
+        isChecking = false;
         checkBtn.disabled = false;
         clearBtn.disabled = false;
-        btnText.textContent = "Verify Links";
         loader.style.display = "none";
+        // Morph back from "Checking..." -> "Verify Links"
+        try {
+          morph(btnOn, btnOff);
+        } catch {
+          btnOff.textContent = "Verify Links";
+        }
       }
-    }
+    };
 
     function escapeHtml(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    function copyAppealInfo(btn) {
+    window.copyAppealInfo = function(btn) {
       const reason = document.getElementById('bannedModalReason')?.textContent || 'Suspended by Administrator';
       const caseId = document.getElementById('bannedCaseId')?.textContent || '#TC-SEC';
       const copyText = `[TeleCheck Appeal]\nReference ID: ${caseId}\nReason: ${reason}\nDate: ${new Date().toLocaleDateString()}`;
@@ -881,9 +965,9 @@
       }).catch(() => {
         alert('Appeal info copied:\n' + copyText);
       });
-    }
+    };
 
-    function showBannedScreen(message, contactHandle) {
+    window.showBannedScreen = function(message, contactHandle) {
       const overlay = document.getElementById('bannedModalOverlay');
       const reasonEl = document.getElementById('bannedModalReason');
       const contactBtn = document.getElementById('contactAdminBtn');
@@ -908,6 +992,10 @@
 
       if (overlay) {
         overlay.style.display = 'flex';
+        try {
+          const modalContent = overlay.querySelector('.banned-card');
+          if (modalContent) rise(modalContent);
+        } catch {}
       }
 
       // Lock input controls
@@ -918,7 +1006,7 @@
         textarea.disabled = true;
         textarea.placeholder = "Your account is suspended. Submissions disabled.";
       }
-    }
+    };
   </script>
 
 </body>

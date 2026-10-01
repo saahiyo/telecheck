@@ -1,0 +1,101 @@
+import { createEffect, createSignal, mergeProps, on, onCleanup, Show, splitProps, } from "solid-js";
+import { createComponent, Dynamic } from "solid-js/web";
+import { leave, morph, reveal, rise } from "./index.js";
+import { prepareMorph } from "./morph.js";
+// Solid applies `ref` outside the owner, so lifecycle hooks are registered in the component body
+// and the ref only captures the element and forwards it to the caller.
+const element = (as, others, theirs, capture) => createComponent(Dynamic, mergeProps(others, {
+    get component() { return as(); },
+    ref(el) {
+        capture(el);
+        if (typeof theirs === "function")
+            theirs(el);
+    },
+}));
+/** Rises on mount and leaves before unmount. Use targets="children" for direct children. Renders a div by default. */
+export function Rise(props) {
+    const [local, others] = splitProps(props, ["as", "show", "targets", "stagger", "delay", "ref"]);
+    const show = () => local.show ?? true;
+    const [mounted, setMounted] = createSignal(show());
+    const [el, setEl] = createSignal();
+    let animations = [];
+    onCleanup(() => animations.forEach((a) => a.cancel()));
+    createEffect(on(() => [show(), el()], ([shown, current], previous) => {
+        if (current !== previous?.[1])
+            animations.forEach((a) => a.cancel());
+        if (shown) {
+            if (!mounted())
+                setMounted(true);
+            else if (current)
+                animations = rise(current, { targets: local.targets, stagger: local.stagger, delay: local.delay });
+            return;
+        }
+        if (!current)
+            return;
+        let live = true;
+        animations = leave(current, { targets: local.targets });
+        Promise.all(animations.map((a) => a.finished))
+            .then(() => live && setMounted(false))
+            .catch(() => { });
+        onCleanup(() => (live = false));
+    }));
+    return createComponent(Show, {
+        get when() {
+            return mounted();
+        },
+        get children() {
+            onCleanup(() => setEl(undefined));
+            return element(() => local.as ?? "div", others, local.ref, setEl);
+        },
+    });
+}
+// The active face sits in the flow and sizes the wrapper; the inactive one floats over it.
+const WRAP = "position:relative;display:inline-flex;align-items:center";
+const face = (shown) => `display:inline-flex;align-items:center;white-space:nowrap;will-change:opacity,filter,scale${shown ? ";position:relative" : ";position:absolute;inset:0;opacity:0"}`;
+/** Two stacked faces. Shows `on` when active, `off` otherwise, morphing between them. */
+export function Morph(props) {
+    const [local, others] = splitProps(props, ["as", "active", "off", "on", "style"]);
+    const shownAtMount = local.active;
+    const [a, setA] = createSignal();
+    const [b, setB] = createSignal();
+    let animations = [];
+    onCleanup(() => animations.forEach((a) => a.cancel()));
+    createEffect(on(() => [local.active, a(), b()], ([active, off, on], previous) => {
+        if (!off || !on)
+            return;
+        const outgoing = active ? off : on;
+        const incoming = active ? on : off;
+        if (previous?.[1] !== off || previous?.[2] !== on) {
+            animations.forEach((a) => a.cancel());
+            prepareMorph(outgoing, incoming);
+            animations = [];
+        }
+        else
+            animations = morph(outgoing, incoming);
+    }));
+    const style = () => typeof local.style === "string" ? `${WRAP};${local.style}` : { position: "relative", display: "inline-flex", "align-items": "center", ...local.style };
+    return createComponent(Dynamic, mergeProps(others, {
+        get component() {
+            return local.as ?? "span";
+        },
+        get style() {
+            return style();
+        },
+        get children() {
+            return [
+                createComponent(Dynamic, { component: "span", ref: setA, style: face(!shownAtMount), "aria-hidden": shownAtMount, inert: shownAtMount, get children() { return local.off; } }),
+                createComponent(Dynamic, { component: "span", ref: setB, style: face(shownAtMount), "aria-hidden": !shownAtMount, inert: !shownAtMount, get children() { return local.on; } }),
+            ];
+        },
+    }));
+}
+/** Reveals as it scrolls into view. Use targets="children" for direct children. Renders a div by default. */
+export function Reveal(props) {
+    const [local, others] = splitProps(props, ["as", "targets", "stagger", "root", "ref"]);
+    const [el, setEl] = createSignal();
+    createEffect(on(el, (current) => {
+        if (current)
+            onCleanup(reveal(current, { targets: local.targets, stagger: local.stagger, root: local.root }));
+    }));
+    return element(() => local.as ?? "div", others, local.ref, setEl);
+}
