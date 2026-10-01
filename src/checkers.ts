@@ -142,21 +142,90 @@ const extractPageTitle = (html: string): string | null => {
   return match ? match[1].trim() : null
 }
 
-const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckResult> => {
-  if (html.includes('tgme_page_title')) {
+const telegramCheck = async (url: string, html: string): Promise<TelegramCheckResult> => {
+  // 1. Detect expired / revoked invite link
+  const isInvite = url.includes('/+') || url.includes('/joinchat/')
+  const hasExpiredNotice =
+    html.includes('tgme_page_icon_expired') ||
+    /link has expired|invite link is expired|no longer active|invite link was revoked/i.test(html)
+  
+  // Generic "You are invited to a group chat" fallback with NO title means the invite is invalid/dead
+  const isGenericBlankInvite = isInvite && html.includes('You are invited to a') && !html.includes('tgme_page_title')
+
+  if (hasExpiredNotice || isGenericBlankInvite) {
+    return {
+      status: 'expired',
+      platform: 'telegram',
+      metadata: null,
+      reason: 'Invite link is expired or revoked',
+    }
+  }
+
+  // 2. Detect blocked / banned / restricted channels
+  const isBlocked =
+    html.includes('tgme_page_blocked') ||
+    /this channel is blocked|channel can\'t be displayed|blocked due to copyright|violation of the Telegram Terms of Service/i.test(html)
+
+  if (isBlocked) {
     const title = extractText(html, 'tgme_page_title')
+    return {
+      status: 'invalid',
+      platform: 'telegram',
+      metadata: title ? {
+        title,
+        description: null,
+        photo: null,
+        type: 'channel',
+        memberCount: null,
+        memberCountRaw: null,
+        isRestricted: true,
+        restrictionReason: 'Channel blocked or restricted due to copyright/terms violation',
+      } : null,
+      reason: 'Channel is blocked or restricted by Telegram',
+    }
+  }
+
+  // 3. Check for valid title
+  if (html.includes('tgme_page_title')) {
+    const rawTitle = extractText(html, 'tgme_page_title')
+    // Clean up checkmark symbols that Telegram appends in title text if verified
+    const title = rawTitle ? rawTitle.replace(/\s*✔\s*$/, '').trim() : null
     const description = extractText(html, 'tgme_page_description')
     const extra = extractText(html, 'tgme_page_extra')
     const photo = extractImgSrc(html, 'tgme_page_photo_image')
+    const actionText = extractText(html, 'tgme_page_action') || ''
 
+    // Badges & flags
+    const isVerified =
+      html.includes('tgme_page_title_verified') ||
+      html.includes('verified-icon') ||
+      (rawTitle?.includes('✔') ?? false)
+
+    const isScam = html.includes('tgme_badge_scam') || /<span[^>]*class="[^"]*badge[^"]*"[^>]*>scam<\/span>/i.test(html)
+    const isFake = html.includes('tgme_badge_fake') || /<span[^>]*class="[^"]*badge[^"]*"[^>]*>fake<\/span>/i.test(html)
+    const isJoinRequest = /request to join|join request/i.test(actionText) || /request to join/i.test(html)
+
+    // Entity type determination
     let type: TelegramCheckResult['metadata'] extends infer T ? T extends { type: infer U } ? U : never : never = null
     let memberCount: number | null = null
     let memberCountRaw: string | null = null
+
+    const actionLower = actionText.toLowerCase()
+    const extraLower = (extra || '').toLowerCase()
+
+    if (actionLower.includes('start bot') || (extra && extra.startsWith('@') && extraLower.endsWith('bot'))) {
+      type = 'bot'
+    } else if (extraLower.includes('subscriber')) {
+      type = 'channel'
+    } else if (extraLower.includes('member') || extraLower.includes('online')) {
+      type = 'group'
+    } else if (isInvite) {
+      type = 'group'
+    } else {
+      type = 'user'
+    }
+
     if (extra) {
-      if (extra.toLowerCase().includes('subscriber')) type = 'channel'
-      else if (extra.toLowerCase().includes('member')) type = 'group'
-      else if (extra.toLowerCase().includes('online')) type = 'group'
-      else type = 'user'
       memberCountRaw = extra
       const memberCountText = extra.split(',', 1)[0]
       const digits = memberCountText.replace(/[^\d]/g, '')
@@ -173,11 +242,15 @@ const telegramCheck = async (_url: string, html: string): Promise<TelegramCheckR
         type,
         memberCount,
         memberCountRaw,
+        isVerified,
+        isScam,
+        isFake,
+        isJoinRequest,
       },
     }
   }
 
-  return { status: 'invalid', platform: 'telegram', metadata: null }
+  return { status: 'invalid', platform: 'telegram', metadata: null, reason: 'Channel, group, or user not found' }
 }
 
 const megaCheck = async (url: string, html: string, httpStatus: number): Promise<MegaCheckResult> => {

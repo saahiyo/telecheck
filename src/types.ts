@@ -1,7 +1,7 @@
 export type Platform = 'telegram' | 'mega' | 'unknown'
 export type CheckStatus = 'valid' | 'invalid' | 'expired' | 'unknown'
 
-export type TelegramEntityType = 'channel' | 'group' | 'user'
+export type TelegramEntityType = 'channel' | 'group' | 'user' | 'bot'
 export type MegaEntityType = 'folder' | 'file' | 'chat' | 'unknown'
 
 export type TelegramMetadata = {
@@ -11,6 +11,12 @@ export type TelegramMetadata = {
   type: TelegramEntityType | null
   memberCount: number | null
   memberCountRaw: string | null
+  isVerified?: boolean
+  isScam?: boolean
+  isFake?: boolean
+  isRestricted?: boolean
+  isJoinRequest?: boolean
+  restrictionReason?: string | null
 }
 
 export type MegaMetadata = {
@@ -31,9 +37,10 @@ export type GenericMetadata = {
 export type LinkMetadata = TelegramMetadata | MegaMetadata | GenericMetadata | null
 
 export type TelegramCheckResult = {
-  status: 'valid' | 'invalid'
+  status: 'valid' | 'invalid' | 'expired'
   platform: 'telegram'
   metadata: TelegramMetadata | null
+  reason?: string
 }
 
 export type MegaCheckResult = {
