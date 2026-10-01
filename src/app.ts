@@ -130,6 +130,23 @@ const requireFirebaseUser = async (c: any) => {
   if (!firebaseUser) {
     return c.json({ error: 'Authentication required' }, 401)
   }
+
+  // If user is not an admin, verify if their contributor profile is banned
+  if (!isAdmin(firebaseUser)) {
+    try {
+      await ensureDbReady()
+      const contributor = await getContributorByFirebaseUid(firebaseUser.uid)
+      if (contributor?.is_banned) {
+        return c.json({
+          error: 'Your contributor account has been suspended.',
+          banned: true,
+          status: 'suspended',
+          contact: '@saahiyo'
+        }, 403)
+      }
+    } catch {}
+  }
+
   return firebaseUser
 }
 

@@ -713,6 +713,30 @@
     </div>
   </div>
 
+  <!-- Account Suspended / Banned Overlay -->
+  <div id="bannedPromptOverlay" class="login-overlay" style="display: none; z-index: 10000; background: rgba(9, 9, 11, 0.96);">
+    <div class="login-card" style="border-color: rgba(239, 68, 68, 0.4); text-align: center; max-width: 460px; box-shadow: 0 25px 60px -15px rgba(239, 68, 68, 0.25);">
+      <div style="width: 64px; height: 64px; background: rgba(239, 68, 68, 0.12); border: 2px solid rgba(239, 68, 68, 0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem auto; color: #ef4444;">
+        <i class="ri-forbid-line" style="font-size: 32px;"></i>
+      </div>
+      <h2 style="color: #ffffff; margin-bottom: 0.5rem;">Account Suspended</h2>
+      <p id="bannedPromptReason" style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.55; margin-bottom: 1.5rem;">
+        Your contributor account has been suspended by an administrator. Access to the admin dashboard and link features has been revoked.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <a href="https://t.me/saahiyo" target="_blank" rel="noopener noreferrer" class="btn" id="adminContactBtn" style="justify-content: center; padding: 0.75rem; background: #2563eb; color: #fff; text-decoration: none; font-size: 0.9rem; border-radius: 8px;">
+          <i class="ri-telegram-fill" style="font-size: 16px;"></i>
+          <span>Contact Admin (@saahiyo)</span>
+        </a>
+        <button class="btn btn-secondary" onclick="logout()" style="justify-content: center; padding: 0.65rem; font-size: 0.85rem;">
+          <i class="ri-logout-box-r-line" style="font-size: 15px;"></i>
+          <span>Log Out</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Page Loading State (displayed while checking auth / fetching initial metrics) -->
   <div class="page-loader" id="pageLoadingState">
     <div class="spinner"></div>
@@ -1184,6 +1208,31 @@
       document.getElementById('loginPromptOverlay').style.display = 'none';
     }
 
+    function showBannedPrompt(message, contactHandle) {
+      closeLoginPrompt();
+      const loader = document.getElementById('pageLoadingState');
+      if (loader) loader.style.display = 'none';
+
+      const overlay = document.getElementById('bannedPromptOverlay');
+      const reasonEl = document.getElementById('bannedPromptReason');
+      const contactBtn = document.getElementById('adminContactBtn');
+
+      if (reasonEl && message) {
+        reasonEl.textContent = message;
+      }
+      if (contactBtn && contactHandle) {
+        const clean = contactHandle.replace(/^@/, '');
+        contactBtn.href = `https://t.me/${clean}`;
+        contactBtn.innerHTML = `
+          <i class="ri-telegram-fill" style="font-size: 16px;"></i>
+          <span>Contact Admin (${contactHandle})</span>
+        `;
+      }
+      if (overlay) {
+        overlay.style.display = 'flex';
+      }
+    }
+
     async function signInWithGoogle() {
       const errEl = document.getElementById('loginError');
       errEl.style.display = 'none';
@@ -1202,6 +1251,10 @@
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
+          if (res.status === 403 && (body.banned || body.status === 'suspended')) {
+            showBannedPrompt(body.error, body.contact);
+            return;
+          }
           throw new Error(body.error || 'This Google account is not configured as an administrator.');
         }
 
@@ -1245,6 +1298,10 @@
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
+          if (res.status === 403 && (body.banned || body.status === 'suspended')) {
+            showBannedPrompt(body.error, body.contact);
+            return;
+          }
           throw new Error(body.error || 'Authentication failed or user is not an administrator.');
         }
 
@@ -1314,6 +1371,14 @@
         throw new Error('Session expired. Please log in again.');
       }
 
+      if (res.status === 403) {
+        const body = await res.clone().json().catch(() => ({}));
+        if (body.banned || body.status === 'suspended') {
+          showBannedPrompt(body.error, body.contact);
+          throw new Error('Account suspended');
+        }
+      }
+
       return res;
     }
 
@@ -1346,6 +1411,11 @@
       try {
         const res = await adminFetch('/api/admin/overview');
         if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (res.status === 403 && (body.banned || body.status === 'suspended')) {
+            showBannedPrompt(body.error, body.contact);
+            return;
+          }
           openLoginPrompt();
           return;
         }
