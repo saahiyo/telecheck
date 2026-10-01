@@ -617,6 +617,30 @@
       transform: translateY(-1px);
     }
 
+    .sound-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease, scale 320ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .sound-toggle:hover {
+      background: var(--surface-hover);
+      color: var(--text-main);
+      border-color: #52525b;
+    }
+    .sound-toggle.muted {
+      color: #71717a;
+      opacity: 0.7;
+    }
+
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.4; transform: scale(0.85); }
@@ -674,18 +698,18 @@
       </div>
 
       <div class="banned-actions">
-        <a href="https://t.me/saahiyo" target="_blank" rel="noopener noreferrer" class="btn-contact-telegram" id="contactAdminBtn">
+        <a href="https://t.me/saahiyo" target="_blank" rel="noopener noreferrer" class="btn-contact-telegram" id="contactAdminBtn" data-cuelume-tap>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.52 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
           </svg>
           <span id="contactAdminBtnText">Contact Admin (@saahiyo)</span>
         </a>
         <div class="banned-btn-row">
-          <button type="button" class="btn-subtle" onclick="copyAppealInfo(this)">
+          <button type="button" class="btn-subtle" onclick="copyAppealInfo(this)" data-cuelume-tap data-cuelume-emphasis="subtle">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <span id="copyBtnText">Copy Appeal Info</span>
           </button>
-          <button type="button" class="btn-subtle" onclick="window.location.reload()">
+          <button type="button" class="btn-subtle" onclick="window.location.reload()" data-cuelume-tap data-cuelume-emphasis="subtle">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
             <span>Check Status</span>
           </button>
@@ -697,11 +721,29 @@
   <div class="container">
     <header>
       <h1>Telegram Link Checker</h1>
-      <p class="subtitle">Verify usernames and invite links instantly in real-time. • <a href="/admin" style="color: var(--primary); text-decoration: none; font-weight: 500;">Admin Dashboard →</a></p>
+      <p class="subtitle" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; flex-wrap: wrap;">
+        <span>Verify usernames and invite links instantly in real-time.</span>
+        <span>•</span>
+        <a href="/admin" data-cuelume-navigate style="color: var(--primary); text-decoration: none; font-weight: 500;">Admin Dashboard →</a>
+        <span>•</span>
+        <button id="soundToggleBtn" class="sound-toggle" type="button" aria-label="Toggle interaction sounds" title="Toggle interaction sounds">
+          <svg id="soundOnIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+          <svg id="soundOffIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+          <span id="soundLabel">Sound</span>
+        </button>
+      </p>
     </header>
 
     <div class="input-group">
-      <textarea id="linksInput" placeholder="@durov&#10;https://t.me/example&#10;t.me/testchannel" spellcheck="false"></textarea>
+      <textarea id="linksInput" data-cuelume-type placeholder="@durov&#10;https://t.me/example&#10;t.me/testchannel" spellcheck="false"></textarea>
       
       <div id="inputError" class="input-error">Please enter at least one link to verify.</div>
 
@@ -711,8 +753,8 @@
         </div>
         
         <div class="btn-group">
-          <button class="btn-secondary" onclick="clearInput()" id="clearBtn" title="Clear input">Clear</button>
-          <button id="checkBtn" onclick="checkLinks()">
+          <button class="btn-secondary" onclick="clearInput()" id="clearBtn" title="Clear input" data-cuelume-tap data-cuelume-emphasis="subtle">Clear</button>
+          <button id="checkBtn" onclick="checkLinks()" data-cuelume-tap>
             <span class="faces" id="btnFaces">
               <span id="btnOff">Verify Links</span>
               <span id="btnOn" class="inactive" aria-hidden="true" inert>
@@ -730,6 +772,53 @@
 
   <script type="module">
     import { rise, leave, morph, reveal } from "./vendor/index.js";
+    import { bind as bindCuelume, play as playSound, setEnabled as setSoundEnabled } from "./vendor/cuelume/index.js";
+
+    // Bind cuelume interaction sounds across the document
+    try {
+      bindCuelume();
+    } catch (e) {
+      console.warn("Cuelume bind failed:", e);
+    }
+
+    // Sound toggle state management
+    let soundEnabled = localStorage.getItem("telecheck_sound") !== "false";
+    setSoundEnabled(soundEnabled);
+
+    const soundBtn = document.getElementById("soundToggleBtn");
+    const soundOnIcon = document.getElementById("soundOnIcon");
+    const soundOffIcon = document.getElementById("soundOffIcon");
+    const soundLabel = document.getElementById("soundLabel");
+
+    function updateSoundUI() {
+      if (!soundBtn) return;
+      if (soundEnabled) {
+        soundBtn.classList.remove("muted");
+        soundBtn.setAttribute("aria-checked", "true");
+        if (soundOnIcon) soundOnIcon.style.display = "block";
+        if (soundOffIcon) soundOffIcon.style.display = "none";
+        if (soundLabel) soundLabel.textContent = "Sound";
+      } else {
+        soundBtn.classList.add("muted");
+        soundBtn.setAttribute("aria-checked", "false");
+        if (soundOnIcon) soundOnIcon.style.display = "none";
+        if (soundOffIcon) soundOffIcon.style.display = "block";
+        if (soundLabel) soundLabel.textContent = "Muted";
+      }
+    }
+    updateSoundUI();
+
+    if (soundBtn) {
+      soundBtn.addEventListener("click", () => {
+        soundEnabled = !soundEnabled;
+        setSoundEnabled(soundEnabled);
+        localStorage.setItem("telecheck_sound", String(soundEnabled));
+        updateSoundUI();
+        if (soundEnabled) {
+          playSound("toggle");
+        }
+      });
+    }
 
     const API_BASE = "https://telecheck.vercel.app";
 
@@ -744,6 +833,7 @@
     document.getElementById('linksInput').addEventListener('keydown', function(e) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
+        playSound("tap");
         checkLinks();
       }
     });
@@ -770,6 +860,7 @@
 
     window.copyToClipboard = function(text, btn) {
       navigator.clipboard.writeText(text).then(() => {
+        playSound("success", { emphasis: "subtle" });
         const originalHTML = btn.innerHTML;
         btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
         btn.style.color = "var(--valid-text)";
@@ -777,10 +868,13 @@
           btn.innerHTML = originalHTML;
           btn.style.color = "";
         }, 1500);
+      }).catch(() => {
+        playSound("error", { emphasis: "subtle" });
       });
     };
 
     window.filterResults = function(type) {
+      playSound("select");
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       const activeTab = document.getElementById(`tab-${type}`);
       if (activeTab) activeTab.classList.add('active');
@@ -821,6 +915,7 @@
       if (!input) {
         inputError.style.display = "block";
         inputEl.focus();
+        playSound("error", { emphasis: "subtle" });
         return;
       }
       
@@ -829,6 +924,7 @@
       checkBtn.disabled = true;
       clearBtn.disabled = true;
       loader.style.display = "block";
+      playSound("loading", { emphasis: "subtle" });
 
       // Morph button text: "Verify Links" -> "Checking..."
       try {
@@ -871,7 +967,7 @@
 
         const buildCard = (item, cls) => `
           <div class="card ${cls}">
-            <button class="copy-btn" onclick="copyToClipboard('${item.url}', this)" title="Copy link">
+            <button class="copy-btn" onclick="copyToClipboard('${item.url}', this)" title="Copy link" data-cuelume-tap data-cuelume-emphasis="subtle">
                ${copySvg}
             </button>
             <strong>${item.url}</strong>
@@ -888,13 +984,14 @@
         
         if (data.total === 0) {
            html += `<div class="empty-state">No links found to check or format was unrecognized.</div>`;
+           playSound("warning");
         } else {
            html += `
             <div class="tabs">
-              <button class="tab-btn active" id="tab-all" onclick="filterResults('all')">All (${data.total})</button>
-              <button class="tab-btn" id="tab-valid" onclick="filterResults('valid')">Valid (${valid.length})</button>
-              <button class="tab-btn" id="tab-invalid" onclick="filterResults('invalid')">Invalid (${invalid.length})</button>
-              <button class="tab-btn" id="tab-unknown" onclick="filterResults('unknown')">Unknown (${unknown.length})</button>
+              <button class="tab-btn active" id="tab-all" onclick="filterResults('all')" data-cuelume-select>All (${data.total})</button>
+              <button class="tab-btn" id="tab-valid" onclick="filterResults('valid')" data-cuelume-select>Valid (${valid.length})</button>
+              <button class="tab-btn" id="tab-invalid" onclick="filterResults('invalid')" data-cuelume-select>Invalid (${invalid.length})</button>
+              <button class="tab-btn" id="tab-unknown" onclick="filterResults('unknown')" data-cuelume-select>Unknown (${unknown.length})</button>
             </div>
             <div class="cards-container">
            `;
@@ -904,6 +1001,13 @@
            html += unknown.map(v => buildCard(v, "unknown")).join("");
            
            html += `</div>`;
+
+           // Sound cue based on batch results
+           if (invalid.length > 0) {
+             playSound("warning");
+           } else {
+             playSound("success");
+           }
         }
 
         resultsContainer.innerHTML = html;
@@ -926,6 +1030,7 @@
         }
 
       } catch (err) {
+        playSound("error");
         resultsContainer.innerHTML = `<div class="error-state">${escapeHtml(err.message || 'Failed to check links. Please try again later.')}</div>`;
         try {
           rise(resultsContainer.children);
@@ -956,6 +1061,7 @@
       const copyText = `[TeleCheck Appeal]\nReference ID: ${caseId}\nReason: ${reason}\nDate: ${new Date().toLocaleDateString()}`;
       
       navigator.clipboard.writeText(copyText).then(() => {
+        playSound("success", { emphasis: "subtle" });
         const span = btn.querySelector('#copyBtnText');
         if (span) {
           const original = span.textContent;
@@ -963,11 +1069,13 @@
           setTimeout(() => { span.textContent = original; }, 2000);
         }
       }).catch(() => {
+        playSound("error", { emphasis: "subtle" });
         alert('Appeal info copied:\n' + copyText);
       });
     };
 
     window.showBannedScreen = function(message, contactHandle) {
+      playSound("attention");
       const overlay = document.getElementById('bannedModalOverlay');
       const reasonEl = document.getElementById('bannedModalReason');
       const contactBtn = document.getElementById('contactAdminBtn');
