@@ -919,13 +919,43 @@
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Username</th>
-              <th>Email / Google Account</th>
-              <th>Status</th>
-              <th>Links Added</th>
-              <th>Last Active</th>
-              <th>Actions</th>
+              <th class="sortable" id="th-contrib-id" onclick="handleContributorsSort('id')" style="width: 70px;" title="Sort by Contributor ID">
+                <span class="th-content">
+                  <span>ID</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-contrib-id"></i>
+                </span>
+              </th>
+              <th class="sortable" id="th-contrib-username" onclick="handleContributorsSort('username')" title="Sort by Username">
+                <span class="th-content">
+                  <span>Username</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-contrib-username"></i>
+                </span>
+              </th>
+              <th class="sortable" id="th-contrib-email" onclick="handleContributorsSort('email')" title="Sort by Email">
+                <span class="th-content">
+                  <span>Email / Google Account</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-contrib-email"></i>
+                </span>
+              </th>
+              <th class="sortable" id="th-contrib-status" onclick="handleContributorsSort('status')" style="width: 95px;" title="Sort by Status">
+                <span class="th-content">
+                  <span>Status</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-contrib-status"></i>
+                </span>
+              </th>
+              <th class="sortable sorted" id="th-contrib-links_added" onclick="handleContributorsSort('links_added')" style="width: 120px;" title="Sort by Links Added">
+                <span class="th-content">
+                  <span>Links Added</span>
+                  <i class="ri-arrow-down-line sort-icon" id="sort-icon-contrib-links_added"></i>
+                </span>
+              </th>
+              <th class="sortable" id="th-contrib-last_seen" onclick="handleContributorsSort('last_seen')" style="width: 155px;" title="Sort by Last Active Date">
+                <span class="th-content">
+                  <span>Last Active</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-contrib-last_seen"></i>
+                </span>
+              </th>
+              <th style="width: 140px; text-align: right;">Actions</th>
             </tr>
           </thead>
           <tbody id="contributorsTbody">
@@ -1021,12 +1051,32 @@
           <table>
             <thead>
               <tr>
-                <th>Timestamp</th>
-                <th>Status</th>
-                <th>Path & Method</th>
-                <th>Error Message</th>
-                <th>Request ID</th>
-                <th>Details</th>
+                <th class="sortable sorted" id="th-err-timestamp" onclick="handleErrorsSort('timestamp')" style="width: 110px;" title="Sort by Timestamp">
+                  <span class="th-content">
+                    <span>Timestamp</span>
+                    <i class="ri-arrow-down-line sort-icon" id="sort-icon-err-timestamp"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-err-status" onclick="handleErrorsSort('status')" style="width: 80px;" title="Sort by HTTP Status">
+                  <span class="th-content">
+                    <span>Status</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-err-status"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-err-path" onclick="handleErrorsSort('path')" title="Sort by Endpoint Path">
+                  <span class="th-content">
+                    <span>Path & Method</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-err-path"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-err-message" onclick="handleErrorsSort('message')" title="Sort by Error Message">
+                  <span class="th-content">
+                    <span>Error Message</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-err-message"></i>
+                  </span>
+                </th>
+                <th style="width: 140px;">Request ID</th>
+                <th style="width: 80px; text-align: right;">Details</th>
               </tr>
             </thead>
             <tbody id="logErrorsTbody">
@@ -1040,12 +1090,32 @@
           <table>
             <thead>
               <tr>
-                <th>Date / Time</th>
-                <th>Level</th>
-                <th>Event</th>
-                <th>Message / Endpoint</th>
-                <th>IP</th>
-                <th>Details</th>
+                <th class="sortable sorted" id="th-dblog-created_at" onclick="handleDbLogsSort('created_at')" style="width: 155px;" title="Sort by Date / Time">
+                  <span class="th-content">
+                    <span>Date / Time</span>
+                    <i class="ri-arrow-down-line sort-icon" id="sort-icon-dblog-created_at"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-dblog-level" onclick="handleDbLogsSort('level')" style="width: 85px;" title="Sort by Log Level">
+                  <span class="th-content">
+                    <span>Level</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-dblog-level"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-dblog-event" onclick="handleDbLogsSort('event')" style="width: 160px;" title="Sort by Event Name">
+                  <span class="th-content">
+                    <span>Event</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-dblog-event"></i>
+                  </span>
+                </th>
+                <th class="sortable" id="th-dblog-message" onclick="handleDbLogsSort('message')" title="Sort by Message / Endpoint">
+                  <span class="th-content">
+                    <span>Message / Endpoint</span>
+                    <i class="ri-expand-up-down-line sort-icon" id="sort-icon-dblog-message"></i>
+                  </span>
+                </th>
+                <th style="width: 130px;">IP</th>
+                <th style="width: 80px; text-align: right;">Details</th>
               </tr>
             </thead>
             <tbody id="logDbTbody">
@@ -1337,7 +1407,8 @@
         const data = await res.json();
         allContributors = data.contributors || [];
         populateContributorFilterOptions(allContributors);
-        renderContributorsList(allContributors);
+        syncContribSortIndicators();
+        filterContributorsTable();
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger)">Failed to load contributors: ${err.message}</td></tr>`;
       }
@@ -1382,18 +1453,78 @@
       return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     }
 
-    function filterContributorsTable() {
-      const q = document.getElementById('contributorSearchInput').value.trim().toLowerCase();
-      if (!q) {
-        renderContributorsList(allContributors);
-        return;
+    let currentContribSortBy = 'links_added';
+    let currentContribSortOrder = 'desc';
+    const CONTRIB_SORTABLE_COLUMNS = ['id', 'username', 'email', 'status', 'links_added', 'last_seen'];
+
+    function handleContributorsSort(column) {
+      if (!CONTRIB_SORTABLE_COLUMNS.includes(column)) return;
+      if (currentContribSortBy === column) {
+        currentContribSortOrder = currentContribSortOrder === 'desc' ? 'asc' : 'desc';
+      } else {
+        currentContribSortBy = column;
+        currentContribSortOrder = (column === 'username' || column === 'email') ? 'asc' : 'desc';
       }
-      const filtered = allContributors.filter(c => 
-        (c.username && c.username.toLowerCase().includes(q)) ||
-        (c.email && c.email.toLowerCase().includes(q)) ||
-        String(c.id).includes(q)
-      );
-      renderContributorsList(filtered);
+      syncContribSortIndicators();
+      filterContributorsTable();
+    }
+
+    function syncContribSortIndicators() {
+      CONTRIB_SORTABLE_COLUMNS.forEach(col => {
+        const th = document.getElementById(`th-contrib-${col}`);
+        const icon = document.getElementById(`sort-icon-contrib-${col}`);
+        if (!th || !icon) return;
+
+        if (col === currentContribSortBy) {
+          th.classList.add('sorted');
+          icon.className = currentContribSortOrder === 'asc' ? 'ri-arrow-up-line sort-icon' : 'ri-arrow-down-line sort-icon';
+        } else {
+          th.classList.remove('sorted');
+          icon.className = 'ri-expand-up-down-line sort-icon';
+        }
+      });
+    }
+
+    function sortContributors(list) {
+      return [...list].sort((a, b) => {
+        let valA, valB;
+        if (currentContribSortBy === 'id') {
+          valA = Number(a.id);
+          valB = Number(b.id);
+        } else if (currentContribSortBy === 'username') {
+          valA = (a.username || '').toLowerCase();
+          valB = (b.username || '').toLowerCase();
+        } else if (currentContribSortBy === 'email') {
+          valA = (a.email || '').toLowerCase();
+          valB = (b.email || '').toLowerCase();
+        } else if (currentContribSortBy === 'status') {
+          valA = a.is_banned ? 1 : 0;
+          valB = b.is_banned ? 1 : 0;
+        } else if (currentContribSortBy === 'links_added') {
+          valA = Number(a.links_added || 0);
+          valB = Number(b.links_added || 0);
+        } else if (currentContribSortBy === 'last_seen') {
+          valA = new Date(a.last_seen || 0).getTime();
+          valB = new Date(b.last_seen || 0).getTime();
+        }
+
+        if (valA < valB) return currentContribSortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return currentContribSortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    function filterContributorsTable() {
+      const q = document.getElementById('contributorSearchInput')?.value.trim().toLowerCase() || '';
+      let list = allContributors;
+      if (q) {
+        list = allContributors.filter(c => 
+          (c.username && c.username.toLowerCase().includes(q)) ||
+          (c.email && c.email.toLowerCase().includes(q)) ||
+          String(c.id).includes(q)
+        );
+      }
+      renderContributorsList(sortContributors(list));
     }
 
     async function editUsername(id, current) {
@@ -1681,9 +1812,41 @@
       }).join('');
     }
 
+    let currentErrorsSortBy = 'timestamp';
+    let currentErrorsSortOrder = 'desc';
+    const ERRORS_SORTABLE_COLUMNS = ['timestamp', 'status', 'path', 'message'];
+
+    function handleErrorsSort(column) {
+      if (!ERRORS_SORTABLE_COLUMNS.includes(column)) return;
+      if (currentErrorsSortBy === column) {
+        currentErrorsSortOrder = currentErrorsSortOrder === 'desc' ? 'asc' : 'desc';
+      } else {
+        currentErrorsSortBy = column;
+        currentErrorsSortOrder = column === 'timestamp' ? 'desc' : 'asc';
+      }
+      syncErrorsSortIndicators();
+      renderActiveLogView();
+    }
+
+    function syncErrorsSortIndicators() {
+      ERRORS_SORTABLE_COLUMNS.forEach(col => {
+        const th = document.getElementById(`th-err-${col}`);
+        const icon = document.getElementById(`sort-icon-err-${col}`);
+        if (!th || !icon) return;
+
+        if (col === currentErrorsSortBy) {
+          th.classList.add('sorted');
+          icon.className = currentErrorsSortOrder === 'asc' ? 'ri-arrow-up-line sort-icon' : 'ri-arrow-down-line sort-icon';
+        } else {
+          th.classList.remove('sorted');
+          icon.className = 'ri-expand-up-down-line sort-icon';
+        }
+      });
+    }
+
     function renderErrorsView(searchFilter) {
       const tbody = document.getElementById('logErrorsTbody');
-      const errors = (cachedLogsData.recent_errors || []).filter(err => {
+      let errors = (cachedLogsData.recent_errors || []).filter(err => {
         if (searchFilter) {
           const str = `${err.message} ${err.path || ''} ${err.requestId || ''}`.toLowerCase();
           if (!str.includes(searchFilter)) return false;
@@ -1695,6 +1858,27 @@
         tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No system errors recorded in telemetry buffer. Clean bill of health!</td></tr>';
         return;
       }
+
+      errors.sort((a, b) => {
+        let valA, valB;
+        if (currentErrorsSortBy === 'timestamp') {
+          valA = new Date(a.timestamp || 0).getTime();
+          valB = new Date(b.timestamp || 0).getTime();
+        } else if (currentErrorsSortBy === 'status') {
+          valA = Number(a.status || 500);
+          valB = Number(b.status || 500);
+        } else if (currentErrorsSortBy === 'path') {
+          valA = (a.path || '').toLowerCase();
+          valB = (b.path || '').toLowerCase();
+        } else if (currentErrorsSortBy === 'message') {
+          valA = (a.message || '').toLowerCase();
+          valB = (b.message || '').toLowerCase();
+        }
+
+        if (valA < valB) return currentErrorsSortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return currentErrorsSortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
 
       tbody.innerHTML = errors.map(err => {
         const time = new Date(err.timestamp).toLocaleTimeString();
@@ -1714,9 +1898,41 @@
       }).join('');
     }
 
+    let currentDbLogsSortBy = 'created_at';
+    let currentDbLogsSortOrder = 'desc';
+    const DBLOGS_SORTABLE_COLUMNS = ['created_at', 'level', 'event', 'message'];
+
+    function handleDbLogsSort(column) {
+      if (!DBLOGS_SORTABLE_COLUMNS.includes(column)) return;
+      if (currentDbLogsSortBy === column) {
+        currentDbLogsSortOrder = currentDbLogsSortOrder === 'desc' ? 'asc' : 'desc';
+      } else {
+        currentDbLogsSortBy = column;
+        currentDbLogsSortOrder = column === 'created_at' ? 'desc' : 'asc';
+      }
+      syncDbLogsSortIndicators();
+      renderActiveLogView();
+    }
+
+    function syncDbLogsSortIndicators() {
+      DBLOGS_SORTABLE_COLUMNS.forEach(col => {
+        const th = document.getElementById(`th-dblog-${col}`);
+        const icon = document.getElementById(`sort-icon-dblog-${col}`);
+        if (!th || !icon) return;
+
+        if (col === currentDbLogsSortBy) {
+          th.classList.add('sorted');
+          icon.className = currentDbLogsSortOrder === 'asc' ? 'ri-arrow-up-line sort-icon' : 'ri-arrow-down-line sort-icon';
+        } else {
+          th.classList.remove('sorted');
+          icon.className = 'ri-expand-up-down-line sort-icon';
+        }
+      });
+    }
+
     function renderDbLogsView(levelFilter, searchFilter) {
       const tbody = document.getElementById('logDbTbody');
-      const logs = (cachedLogsData.db_logs || []).filter(l => {
+      let logs = (cachedLogsData.db_logs || []).filter(l => {
         if (levelFilter !== 'all' && l.level !== levelFilter) return false;
         if (searchFilter) {
           const str = `${l.message || ''} ${l.event || ''} ${l.path || ''} ${l.ip || ''}`.toLowerCase();
@@ -1729,6 +1945,27 @@
         tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No persistent logs recorded in database.</td></tr>';
         return;
       }
+
+      logs.sort((a, b) => {
+        let valA, valB;
+        if (currentDbLogsSortBy === 'created_at') {
+          valA = new Date(a.created_at || 0).getTime();
+          valB = new Date(b.created_at || 0).getTime();
+        } else if (currentDbLogsSortBy === 'level') {
+          valA = (a.level || '').toLowerCase();
+          valB = (b.level || '').toLowerCase();
+        } else if (currentDbLogsSortBy === 'event') {
+          valA = (a.event || '').toLowerCase();
+          valB = (b.event || '').toLowerCase();
+        } else if (currentDbLogsSortBy === 'message') {
+          valA = (a.message || a.path || '').toLowerCase();
+          valB = (b.message || b.path || '').toLowerCase();
+        }
+
+        if (valA < valB) return currentDbLogsSortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return currentDbLogsSortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
 
       tbody.innerHTML = logs.map(l => {
         const dateStr = new Date(l.created_at).toLocaleString();
