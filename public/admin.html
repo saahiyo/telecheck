@@ -420,7 +420,7 @@
   </header>
 
   <!-- Login Modal Prompt -->
-  <div id="loginPromptOverlay" class="login-overlay">
+  <div id="loginPromptOverlay" class="login-overlay" style="display: none;">
     <div class="login-card">
       <h2>Admin Authentication</h2>
       <p>Sign in with your administrator Google account or enter your Firebase ID Token.</p>
@@ -635,9 +635,10 @@
       }
     }
 
-    function logout() {
+    async function logout() {
       localStorage.removeItem('tc_admin_token');
       authToken = '';
+      try { await firebase.auth().signOut(); } catch {}
       location.reload();
     }
 
@@ -678,7 +679,27 @@
       }
     }
 
+    function waitForFirebaseAuth() {
+      return new Promise((resolve) => {
+        const unsubscribe = firebase.auth().onAuthStateChanged((user) => {
+          unsubscribe();
+          resolve(user);
+        });
+      });
+    }
+
     async function initDashboard() {
+      // If we don't have a token, wait for Firebase auth state to initialize
+      if (!authToken) {
+        const user = await waitForFirebaseAuth();
+        if (user) {
+          try {
+            authToken = await user.getIdToken();
+            localStorage.setItem('tc_admin_token', authToken);
+          } catch {}
+        }
+      }
+
       if (!authToken) {
         openLoginPrompt();
         return;
@@ -690,39 +711,59 @@
         });
 
         if (!res.ok) {
+          // Try refreshing token from Firebase if expired
+          const user = firebase.auth().currentUser || (await waitForFirebaseAuth());
+          if (user) {
+            authToken = await user.getIdToken(true);
+            localStorage.setItem('tc_admin_token', authToken);
+            const retryRes = await fetch('/api/admin/overview', {
+              headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              applyDashboardData(retryData);
+              return;
+            }
+          }
+
           localStorage.removeItem('tc_admin_token');
+          authToken = '';
           openLoginPrompt();
           return;
         }
 
         const data = await res.json();
-        closeLoginPrompt();
-
-        // Show UI
-        document.getElementById('dashboardContent').style.display = 'flex';
-        document.getElementById('userInfoPill').style.display = 'flex';
-        document.getElementById('logoutBtn').style.display = 'inline-block';
-        document.getElementById('loginBtnTrigger').style.display = 'none';
-        document.getElementById('userEmailDisplay').textContent = data.user.email || data.user.uid;
-
-        // Render stats
-        document.getElementById('statTotalLinks').textContent = data.counts.totalLinks.toLocaleString();
-        document.getElementById('statLinksBreakdown').textContent = `Telegram: ${data.counts.telegramLinks.toLocaleString()} • MEGA: ${data.counts.megaLinks.toLocaleString()}`;
-        document.getElementById('statTotalChecks').textContent = (data.stats.totalChecks || 0).toLocaleString();
-        document.getElementById('statChecksBreakdown').textContent = `Valid: ${(data.stats.valid || 0).toLocaleString()} • Invalid: ${(data.stats.invalid || 0).toLocaleString()}`;
-        document.getElementById('statTotalContributors').textContent = data.counts.contributors.toLocaleString();
-        document.getElementById('statTagsCount').textContent = data.counts.tagsCount;
-
-        // Render Tags
-        renderTags(data.tags || []);
-
-        // Load Contributors & System
-        loadContributors();
-        renderSystemStatus(data.server);
+        applyDashboardData(data);
       } catch (err) {
         console.error(err);
         openLoginPrompt();
       }
+    }
+
+    function applyDashboardData(data) {
+      closeLoginPrompt();
+
+      // Show UI
+      document.getElementById('dashboardContent').style.display = 'flex';
+      document.getElementById('userInfoPill').style.display = 'flex';
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      document.getElementById('loginBtnTrigger').style.display = 'none';
+      document.getElementById('userEmailDisplay').textContent = data.user.email || data.user.uid;
+
+      // Render stats
+      document.getElementById('statTotalLinks').textContent = data.counts.totalLinks.toLocaleString();
+      document.getElementById('statLinksBreakdown').textContent = `Telegram: ${data.counts.telegramLinks.toLocaleString()} • MEGA: ${data.counts.megaLinks.toLocaleString()}`;
+      document.getElementById('statTotalChecks').textContent = (data.stats.totalChecks || 0).toLocaleString();
+      document.getElementById('statChecksBreakdown').textContent = `Valid: ${(data.stats.valid || 0).toLocaleString()} • Invalid: ${(data.stats.invalid || 0).toLocaleString()}`;
+      document.getElementById('statTotalContributors').textContent = data.counts.contributors.toLocaleString();
+      document.getElementById('statTagsCount').textContent = data.counts.tagsCount;
+
+      // Render Tags
+      renderTags(data.tags || []);
+
+      // Load Contributors & System
+      loadContributors();
+      renderSystemStatus(data.server);
     }
 
     let allContributors = [];
