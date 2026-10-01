@@ -598,6 +598,32 @@ export const getContributorRankById = async (contributorId: number) => {
   return rows.length > 0 ? parseInt(rows[0].rank as string, 10) : null
 }
 
+export const getAllContributors = async (limit = 100, offset = 0) => {
+  const sql = getDb()
+  return sql`
+    SELECT
+      c.id,
+      c.username,
+      c.email,
+      c.firebase_uid,
+      c.recovery_key,
+      COUNT(l.id) AS links_added,
+      c.first_seen,
+      c.last_seen
+    FROM contributors c
+    LEFT JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
+    GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.first_seen, c.last_seen
+    ORDER BY c.last_seen DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `
+}
+
+export const getAllContributorsCount = async () => {
+  const sql = getDb()
+  const rows = await sql`SELECT COUNT(*) as count FROM contributors`
+  return parseInt(rows[0].count as string, 10)
+}
+
 export const getContributorByRecoveryKey = async (recoveryKey: string) => {
   const sql = getDb()
   const rows = await sql`SELECT * FROM contributors WHERE recovery_key = ${recoveryKey} LIMIT 1`

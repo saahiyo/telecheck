@@ -1,5 +1,7 @@
 import dotenv from 'dotenv'
 dotenv.config({ path: '.env.local' })
+import fs from 'node:fs'
+import path from 'node:path'
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
@@ -31,6 +33,8 @@ import {
   completeJob,
   getOrCreateFirebaseContributor,
   linkContributorToFirebaseByRecoveryKey,
+  getAllContributors,
+  getAllContributorsCount,
 } from './db.js'
 import { observabilityMiddleware, getMetrics, logError } from './observability.js'
 import { verifyFirebaseToken } from './auth.js'
@@ -527,6 +531,17 @@ app.post('/api/worker/batch', async (c) => {
   }
 })
 
+app.get('/admin', (c) => {
+  try {
+    const htmlPath = path.resolve(process.cwd(), 'public', 'admin.html')
+    if (fs.existsSync(htmlPath)) {
+      const html = fs.readFileSync(htmlPath, 'utf-8')
+      return c.html(html)
+    }
+  } catch {}
+  return c.text('Admin dashboard file not found', 404)
+})
+
 app.get('/health', (c) => {
   return c.json({ status: 'ok', uptime_ms: Date.now() - startedAt })
 })
@@ -662,6 +677,66 @@ app.post('/links/validate', async (c) => {
   return c.json(result)
 })
 
+app.get('/api/admin/overview', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  await ensureDbReady()
+  const [totalLinks, tgLinks, megaLinks, totalContributors, stats, stats24h, tags] = await Promise.all([
+    getLinkCount(),
+    getLinkCount('telegram'),
+    getLinkCount('mega'),
+    getAllContributorsCount(),
+    getStats(),
+    get24hStats(),
+    getGlobalTags(),
+  ])
+
+  return c.json({
+    user: {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+    },
+    counts: {
+      totalLinks,
+      telegramLinks: tgLinks,
+      megaLinks,
+      contributors: totalContributors,
+      tagsCount: tags.length,
+    },
+    stats,
+    stats24h,
+    tags,
+    server: {
+      uptime_ms: Date.now() - startedAt,
+      redisConfigured: isRedisConfigured(),
+      qstashConfigured: isQStashConfigured(),
+    },
+  })
+})
+
+app.get('/api/admin/contributors', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  await ensureDbReady()
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200)
+  const offset = parseInt(c.req.query('offset') || '0', 10) || 0
+
+  const [contributors, total] = await Promise.all([
+    getAllContributors(limit, offset),
+    getAllContributorsCount(),
+  ])
+
+  return c.json({
+    total,
+    limit,
+    offset,
+    contributors,
+  })
+})
+
+
 app.get('/tags', async (c) => {
   await ensureDbReady()
   const tags = await getGlobalTags()
@@ -781,6 +856,8 @@ app.get('/contributors/me', async (c) => {
       recovery_key: contributor.recovery_key,
       links_added: activeLinksCount,
       rank,
+      is_admin: isAdmin(firebaseUser),
+      email: firebaseUser.email,
       first_seen: contributor.first_seen,
       last_seen: contributor.last_seen,
     })
