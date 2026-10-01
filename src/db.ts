@@ -37,6 +37,7 @@ export const initDB = async () => {
       // existing databases gain Firebase identity support on deployment.
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS firebase_uid TEXT`
       await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS email TEXT`
+      await sql`ALTER TABLE contributors ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false`
       await sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS owner_uid TEXT`
       await sql`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_contributors_firebase_uid
@@ -197,6 +198,14 @@ export const initDB = async () => {
   await sql`
     DO $$ BEGIN
       ALTER TABLE contributors ADD COLUMN email TEXT;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$
+  `
+
+  // Add is_banned column to contributors if it doesn't exist
+  await sql`
+    DO $$ BEGIN
+      ALTER TABLE contributors ADD COLUMN is_banned BOOLEAN DEFAULT false;
     EXCEPTION WHEN duplicate_column THEN NULL;
     END $$
   `
@@ -607,12 +616,13 @@ export const getAllContributors = async (limit = 100, offset = 0) => {
       c.email,
       c.firebase_uid,
       c.recovery_key,
+      c.is_banned,
       COUNT(l.id) AS links_added,
       c.first_seen,
       c.last_seen
     FROM contributors c
     LEFT JOIN links l ON l.contributor_id = c.id AND l.status = 'valid'
-    GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.first_seen, c.last_seen
+    GROUP BY c.id, c.username, c.email, c.firebase_uid, c.recovery_key, c.is_banned, c.first_seen, c.last_seen
     ORDER BY c.last_seen DESC
     LIMIT ${limit} OFFSET ${offset}
   `
@@ -622,6 +632,65 @@ export const getAllContributorsCount = async () => {
   const sql = getDb()
   const rows = await sql`SELECT COUNT(*) as count FROM contributors`
   return parseInt(rows[0].count as string, 10)
+}
+
+export const updateContributorUsername = async (id: number, newUsername: string): Promise<boolean> => {
+  const sql = getDb()
+  const rows = await sql`
+    UPDATE contributors
+    SET username = ${newUsername}, last_seen = NOW()
+    WHERE id = ${id}
+    RETURNING id
+  `
+  return rows.length > 0
+}
+
+export const resetContributorRecoveryKey = async (id: number): Promise<string | null> => {
+  const sql = getDb()
+  const newKey = generateRecoveryKey()
+  const rows = await sql`
+    UPDATE contributors
+    SET recovery_key = ${newKey}, last_seen = NOW()
+    WHERE id = ${id}
+    RETURNING recovery_key
+  `
+  return rows.length > 0 ? (rows[0].recovery_key as string) : null
+}
+
+export const setContributorBanStatus = async (id: number, isBanned: boolean): Promise<boolean> => {
+  const sql = getDb()
+  const rows = await sql`
+    UPDATE contributors
+    SET is_banned = ${isBanned}, last_seen = NOW()
+    WHERE id = ${id}
+    RETURNING id
+  `
+  return rows.length > 0
+}
+
+export const reassignContributorLinks = async (fromId: number, toId: number): Promise<number> => {
+  const sql = getDb()
+  const rows = await sql`
+    WITH moved AS (
+      UPDATE links
+      SET contributor_id = ${toId}
+      WHERE contributor_id = ${fromId}
+      RETURNING id
+    ),
+    recounted AS (
+      UPDATE contributors
+      SET links_added = (SELECT COUNT(*) FROM links WHERE contributor_id = ${toId} AND status = 'valid'),
+          last_seen = NOW()
+      WHERE id = ${toId}
+    ),
+    cleared AS (
+      UPDATE contributors
+      SET links_added = 0, last_seen = NOW()
+      WHERE id = ${fromId}
+    )
+    SELECT COUNT(*) as count FROM moved
+  `
+  return parseInt(rows[0]?.count as string, 10) || 0
 }
 
 export const getContributorByRecoveryKey = async (recoveryKey: string) => {

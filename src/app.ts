@@ -35,6 +35,10 @@ import {
   linkContributorToFirebaseByRecoveryKey,
   getAllContributors,
   getAllContributorsCount,
+  updateContributorUsername,
+  resetContributorRecoveryKey,
+  setContributorBanStatus,
+  reassignContributorLinks,
 } from './db.js'
 import { observabilityMiddleware, getMetrics, logError } from './observability.js'
 import { verifyFirebaseToken } from './auth.js'
@@ -156,6 +160,7 @@ const resolveContributor = async (c: any, body?: ContributorIdentityPayload) => 
 const resolveContributorId = async (c: any, body?: ContributorIdentityPayload): Promise<number | null> => {
   try {
     const contributor = await resolveContributor(c, body)
+    if (contributor?.is_banned) return null
     return contributor.id as number
   } catch {
     return null
@@ -734,6 +739,80 @@ app.get('/api/admin/contributors', async (c) => {
     offset,
     contributors,
   })
+})
+
+app.patch('/api/admin/contributors/:id/username', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid contributor ID' }, 400)
+
+  const body = (await c.req.json().catch(() => ({}))) as { username?: string }
+  const newUsername = (body.username || '').trim()
+  if (!newUsername || newUsername.length < 3 || newUsername.length > 32) {
+    return c.json({ error: 'Username must be between 3 and 32 characters' }, 400)
+  }
+
+  await ensureDbReady()
+  try {
+    const updated = await updateContributorUsername(id, newUsername)
+    if (!updated) return c.json({ error: 'Contributor not found' }, 404)
+    return c.json({ success: true, id, username: newUsername })
+  } catch (err: any) {
+    if (err.message?.includes('unique') || err.message?.includes('duplicate')) {
+      return c.json({ error: 'Username already taken' }, 409)
+    }
+    return c.json({ error: 'Failed to update username' }, 500)
+  }
+})
+
+app.patch('/api/admin/contributors/:id/ban', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid contributor ID' }, 400)
+
+  const body = (await c.req.json().catch(() => ({}))) as { is_banned?: boolean }
+  const isBanned = Boolean(body.is_banned)
+
+  await ensureDbReady()
+  const updated = await setContributorBanStatus(id, isBanned)
+  if (!updated) return c.json({ error: 'Contributor not found' }, 404)
+
+  return c.json({ success: true, id, is_banned: isBanned })
+})
+
+app.post('/api/admin/contributors/:id/reset-key', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid contributor ID' }, 400)
+
+  await ensureDbReady()
+  const newKey = await resetContributorRecoveryKey(id)
+  if (!newKey) return c.json({ error: 'Contributor not found' }, 404)
+
+  return c.json({ success: true, id, recovery_key: newKey })
+})
+
+app.post('/api/admin/contributors/reassign-links', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const body = (await c.req.json().catch(() => ({}))) as { from_id?: number; to_id?: number }
+  const fromId = parseInt(String(body.from_id), 10)
+  const toId = parseInt(String(body.to_id), 10)
+
+  if (!fromId || !toId || fromId === toId) {
+    return c.json({ error: 'Valid and distinct from_id and to_id are required' }, 400)
+  }
+
+  await ensureDbReady()
+  const moved = await reassignContributorLinks(fromId, toId)
+  return c.json({ success: true, moved_count: moved, from_id: fromId, to_id: toId })
 })
 
 

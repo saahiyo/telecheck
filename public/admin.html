@@ -514,19 +514,26 @@
 
       <!-- Tab: Contributors Table -->
       <div id="tabContributors" class="table-container">
+        <div style="padding: 1rem; border-bottom: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+          <input type="text" id="contributorSearchInput" onkeyup="filterContributorsTable()" placeholder="Search by username or email..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 280px;">
+          <button class="btn btn-secondary" onclick="openReassignModal()" style="font-size: 0.8rem;">
+            ⇄ Reassign Links Between Users
+          </button>
+        </div>
         <table>
           <thead>
             <tr>
               <th>ID</th>
               <th>Username</th>
               <th>Email / Google Account</th>
+              <th>Status</th>
               <th>Links Added</th>
-              <th>First Seen</th>
               <th>Last Active</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="contributorsTbody">
-            <tr><td colspan="6" style="text-align:center; color: var(--text-muted);">Loading contributors...</td></tr>
+            <tr><td colspan="7" style="text-align:center; color: var(--text-muted);">Loading contributors...</td></tr>
           </tbody>
         </table>
       </div>
@@ -718,30 +725,175 @@
       }
     }
 
+    let allContributors = [];
+
     async function loadContributors() {
       const tbody = document.getElementById('contributorsTbody');
       try {
-        const res = await fetch('/api/admin/contributors?limit=100', {
+        const res = await fetch('/api/admin/contributors?limit=150', {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const data = await res.json();
-        if (!data.contributors || !data.contributors.length) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No contributors found.</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = data.contributors.map(c => `
-          <tr>
-            <td class="mono">${c.id}</td>
-            <td><strong>${c.username}</strong></td>
-            <td>${c.email ? `<span class="badge badge-primary">${c.email}</span>` : '<span style="color:var(--text-muted)">Anonymous</span>'}</td>
-            <td><strong>${c.links_added || 0}</strong></td>
-            <td>${new Date(c.first_seen).toLocaleDateString()}</td>
-            <td>${new Date(c.last_seen).toLocaleString()}</td>
-          </tr>
-        `).join('');
+        allContributors = data.contributors || [];
+        renderContributorsList(allContributors);
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger)">Failed to load contributors: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger)">Failed to load contributors: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderContributorsList(list) {
+      const tbody = document.getElementById('contributorsTbody');
+      if (!list || !list.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No contributors found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map(c => `
+        <tr style="${c.is_banned ? 'opacity: 0.6; background: rgba(239, 68, 68, 0.05);' : ''}">
+          <td class="mono">${c.id}</td>
+          <td>
+            <strong>${c.username}</strong>
+            <button onclick="editUsername(${c.id}, '${escapeHtml(c.username)}')" title="Edit Username" style="background:none; border:none; color:var(--text-muted); cursor:pointer; margin-left:4px;">✏️</button>
+          </td>
+          <td>${c.email ? `<span class="badge badge-primary">${c.email}</span>` : '<span style="color:var(--text-muted)">Anonymous</span>'}</td>
+          <td>
+            ${c.is_banned 
+              ? '<span class="badge" style="background:rgba(239,68,68,0.2); color:#f87171;">BANNED</span>' 
+              : '<span class="badge badge-success">ACTIVE</span>'}
+          </td>
+          <td><strong>${c.links_added || 0}</strong></td>
+          <td>${new Date(c.last_seen).toLocaleString()}</td>
+          <td>
+            <div style="display: flex; gap: 0.35rem; align-items: center;">
+              <button class="btn btn-secondary" onclick="toggleBanContributor(${c.id}, ${!c.is_banned})" style="padding: 0.25rem 0.5rem; font-size: 0.72rem; ${c.is_banned ? 'color: var(--success);' : 'color: var(--danger);'}">
+                ${c.is_banned ? 'Unban' : 'Ban'}
+              </button>
+              <button class="btn btn-secondary" onclick="resetRecoveryKey(${c.id})" style="padding: 0.25rem 0.5rem; font-size: 0.72rem;" title="Generate new recovery key">
+                Reset Key
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    function filterContributorsTable() {
+      const q = document.getElementById('contributorSearchInput').value.trim().toLowerCase();
+      if (!q) {
+        renderContributorsList(allContributors);
+        return;
+      }
+      const filtered = allContributors.filter(c => 
+        (c.username && c.username.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        String(c.id).includes(q)
+      );
+      renderContributorsList(filtered);
+    }
+
+    async function editUsername(id, current) {
+      const newName = prompt(`Enter new username for contributor #${id}:`, current);
+      if (!newName || newName.trim() === current) return;
+
+      try {
+        const res = await fetch(`/api/admin/contributors/${id}/username`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ username: newName.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update username');
+
+        showToast(`Username updated to ${data.username}!`);
+        loadContributors();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function toggleBanContributor(id, shouldBan) {
+      const action = shouldBan ? 'ban' : 'unban';
+      if (!confirm(`Are you sure you want to ${action} contributor #${id}?`)) return;
+
+      try {
+        const res = await fetch(`/api/admin/contributors/${id}/ban`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ is_banned: shouldBan })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update ban status');
+
+        showToast(`Contributor #${id} is now ${shouldBan ? 'banned' : 'active'}!`);
+        loadContributors();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function resetRecoveryKey(id) {
+      if (!confirm(`Generate a brand new recovery key for contributor #${id}? Their old key will stop working.`)) return;
+
+      try {
+        const res = await fetch(`/api/admin/contributors/${id}/reset-key`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to reset recovery key');
+
+        prompt(`New recovery key for contributor #${id} (copy below):`, data.recovery_key);
+        showToast('Recovery key reset successfully.');
+        loadContributors();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function openReassignModal() {
+      const fromId = prompt('Enter the SOURCE contributor ID (links will be taken FROM this user):');
+      if (!fromId) return;
+      const toId = prompt('Enter the DESTINATION contributor ID (links will be given TO this user):');
+      if (!toId) return;
+
+      if (fromId === toId) {
+        alert('Source and destination cannot be the same user.');
+        return;
+      }
+
+      executeReassign(parseInt(fromId, 10), parseInt(toId, 10));
+    }
+
+    async function executeReassign(fromId, toId) {
+      if (!confirm(`Confirm: Move all links from Contributor #${fromId} to Contributor #${toId}?`)) return;
+
+      try {
+        const res = await fetch('/api/admin/contributors/reassign-links', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ from_id: fromId, to_id: toId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to reassign links');
+
+        showToast(`Successfully migrated ${data.moved_count} links to Contributor #${toId}!`);
+        loadContributors();
+        initDashboard();
+      } catch (err) {
+        alert(err.message);
       }
     }
 
