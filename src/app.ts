@@ -143,7 +143,7 @@ const requireFirebaseUser = async (c: any) => {
       }
       if (contributor?.is_banned) {
         return c.json({
-          error: 'Your contributor account has been suspended.',
+          error: 'Your account has been suspended by an administrator.',
           banned: true,
           status: 'suspended',
           contact: '@saahiyo'
