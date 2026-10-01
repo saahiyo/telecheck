@@ -2,7 +2,7 @@ import { neon, NeonQueryFunction } from '@neondatabase/serverless'
 
 let sqlInstance: NeonQueryFunction<false, false> | null = null
 
-const getDb = () => {
+export const getDb = () => {
   if (sqlInstance) return sqlInstance
 
   const url = process.env.VLINKS_POSTGRES_URL || process.env.POSTGRES_URL
@@ -783,16 +783,24 @@ export const saveLink = async (
 // --------------------------------------------
 export const getLinks = async ({
   platform,
+  status,
   search,
   tag,
   username,
+  contributorId,
+  sortBy = 'checked_at',
+  sortOrder = 'desc',
   limit = 50,
   offset = 0
 }: {
   platform?: string
+  status?: string
   search?: string
   tag?: string
   username?: string
+  contributorId?: number
+  sortBy?: 'checked_at' | 'member_count' | 'title' | 'id'
+  sortOrder?: 'asc' | 'desc'
   limit?: number
   offset?: number
 }) => {
@@ -801,19 +809,37 @@ export const getLinks = async ({
   const tagFilter = tag ? tag.trim() : null
   const usernameFilter = username ? username.trim() : null
 
-  // Base query with contributor details when available
-  const baseQuery = usernameFilter 
-    ? sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
-    : sql`FROM links l LEFT JOIN contributors c ON l.contributor_id = c.id WHERE true`
+  // Base query with contributor details
+  let baseQuery = sql`FROM links l LEFT JOIN contributors c ON l.contributor_id = c.id WHERE true`
+  if (usernameFilter) {
+    baseQuery = sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
+  } else if (contributorId) {
+    baseQuery = sql`FROM links l LEFT JOIN contributors c ON l.contributor_id = c.id WHERE l.contributor_id = ${contributorId}`
+  }
 
   const platformCond = platform ? sql`AND l.platform = ${platform}` : sql``
+  const statusCond = status ? sql`AND l.status = ${status}` : sql``
   const searchCond = pattern ? sql`AND (l.url ILIKE ${pattern} OR l.title ILIKE ${pattern} OR l.description ILIKE ${pattern})` : sql``
   const tagCond = tagFilter ? sql`AND (${tagFilter}::text = ANY(l.tags))` : sql``
+
+  // Safe sorting
+  const isAsc = sortOrder.toLowerCase() === 'asc'
+  let orderClause = sql`ORDER BY l.checked_at DESC`
+  if (sortBy === 'member_count') {
+    orderClause = isAsc ? sql`ORDER BY l.member_count ASC NULLS LAST` : sql`ORDER BY l.member_count DESC NULLS LAST`
+  } else if (sortBy === 'title') {
+    orderClause = isAsc ? sql`ORDER BY l.title ASC NULLS LAST` : sql`ORDER BY l.title DESC NULLS LAST`
+  } else if (sortBy === 'id') {
+    orderClause = isAsc ? sql`ORDER BY l.id ASC` : sql`ORDER BY l.id DESC`
+  } else if (sortBy === 'checked_at') {
+    orderClause = isAsc ? sql`ORDER BY l.checked_at ASC` : sql`ORDER BY l.checked_at DESC`
+  }
 
   return sql`
     SELECT
       l.*,
       c.username AS contributor_username,
+      c.email AS contributor_email,
       (
         SELECT COUNT(*)
         FROM links contributor_links
@@ -824,9 +850,10 @@ export const getLinks = async ({
       c.last_seen AS contributor_last_seen
     ${baseQuery}
     ${platformCond}
+    ${statusCond}
     ${searchCond}
     ${tagCond}
-    ORDER BY l.checked_at DESC
+    ${orderClause}
     LIMIT ${limit} OFFSET ${offset}
   `
 }
@@ -850,19 +877,30 @@ export const deleteLinks = async (urls: string[]) => {
 }
 
 // --------------------------------------------
-// COUNT: Get total stored links (supports search filter)
+// COUNT: Get total stored links (supports search, status, & user filter)
 // --------------------------------------------
-export const getLinkCount = async (platform?: string, search?: string, tag?: string, username?: string) => {
+export const getLinkCount = async (
+  platform?: string,
+  search?: string,
+  tag?: string,
+  username?: string,
+  status?: string,
+  contributorId?: number
+) => {
   const sql = getDb()
   const pattern = search ? `%${search.trim()}%` : null
   const tagFilter = tag ? tag.trim() : null
   const usernameFilter = username ? username.trim() : null
 
-  const baseQuery = usernameFilter 
-    ? sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
-    : sql`FROM links l WHERE true`
+  let baseQuery = sql`FROM links l WHERE true`
+  if (usernameFilter) {
+    baseQuery = sql`FROM links l JOIN contributors c ON l.contributor_id = c.id WHERE c.username = ${usernameFilter}`
+  } else if (contributorId) {
+    baseQuery = sql`FROM links l WHERE l.contributor_id = ${contributorId}`
+  }
 
   const platformCond = platform ? sql`AND l.platform = ${platform}` : sql``
+  const statusCond = status ? sql`AND l.status = ${status}` : sql``
   const searchCond = pattern ? sql`AND (l.url ILIKE ${pattern} OR l.title ILIKE ${pattern} OR l.description ILIKE ${pattern})` : sql``
   const tagCond = tagFilter ? sql`AND (${tagFilter}::text = ANY(l.tags))` : sql``
 
@@ -870,6 +908,7 @@ export const getLinkCount = async (platform?: string, search?: string, tag?: str
     SELECT COUNT(*) as count 
     ${baseQuery}
     ${platformCond}
+    ${statusCond}
     ${searchCond}
     ${tagCond}
   `
@@ -882,6 +921,51 @@ export const getLinkCount = async (platform?: string, search?: string, tag?: str
 export const updateLinkTags = async (url: string, tags: string[]) => {
   const sql = getDb()
   await sql`UPDATE links SET tags = ${tags} WHERE url = ${url}`
+}
+
+export const updateLinkDetails = async (
+  id: number,
+  updates: {
+    status?: string
+    title?: string
+    description?: string
+    tags?: string[]
+    contributorId?: number | null
+  }
+) => {
+  const sql = getDb()
+  const rows = await sql`SELECT * FROM links WHERE id = ${id} LIMIT 1`
+  if (!rows.length) return null
+
+  const newStatus = updates.status !== undefined ? updates.status : rows[0].status
+  const newTitle = updates.title !== undefined ? updates.title : rows[0].title
+  const newDesc = updates.description !== undefined ? updates.description : rows[0].description
+  const newTags = updates.tags !== undefined ? updates.tags : (rows[0].tags || [])
+  const newContributorId = updates.contributorId !== undefined ? updates.contributorId : rows[0].contributor_id
+
+  const updatedRows = await sql`
+    UPDATE links
+    SET
+      status = ${newStatus},
+      title = ${newTitle},
+      description = ${newDesc},
+      tags = ${newTags},
+      contributor_id = ${newContributorId},
+      checked_at = NOW()
+    WHERE id = ${id}
+    RETURNING *
+  `
+  return updatedRows[0]
+}
+
+export const deleteLinkById = async (id: number): Promise<boolean> => {
+  const sql = getDb()
+  const rows = await sql`
+    DELETE FROM links
+    WHERE id = ${id}
+    RETURNING id
+  `
+  return rows.length > 0
 }
 
 // --------------------------------------------

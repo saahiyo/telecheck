@@ -41,6 +41,9 @@ import {
   reassignContributorLinks,
   getSystemLogs,
   insertSystemLog,
+  updateLinkDetails,
+  deleteLinkById,
+  getDb,
 } from './db.js'
 import { observabilityMiddleware, getMetrics, logError, getTelemetryData, clearTelemetryBuffer, setLogSink } from './observability.js'
 import { verifyFirebaseToken } from './auth.js'
@@ -619,9 +622,14 @@ app.get('/stats', async (c) => {
 
 app.get('/links', async (c) => {
   const platform = c.req.query('platform')
+  const status = c.req.query('status')
   const search = c.req.query('search')
   const tag = c.req.query('tag')
   const username = c.req.query('username') || c.req.query('user')
+  const contributorIdQuery = c.req.query('contributor_id')
+  const contributorId = contributorIdQuery ? parseInt(contributorIdQuery, 10) : undefined
+  const sortBy = c.req.query('sort_by') as any
+  const sortOrder = c.req.query('order') as any
   const limitQuery = c.req.query('limit') || '50'
   const offset = parseInt(c.req.query('offset') || '0', 10) || 0
   const validate = c.req.query('validate') !== undefined
@@ -633,13 +641,24 @@ app.get('/links', async (c) => {
 
   const links = await getLinks({
     platform: platform || undefined,
+    status: status || undefined,
     search: search || undefined,
     tag: tag || undefined,
     username: username || undefined,
+    contributorId,
+    sortBy: sortBy || 'checked_at',
+    sortOrder: sortOrder || 'desc',
     limit,
     offset,
   })
-  const total = await getLinkCount(platform || undefined, search || undefined, tag || undefined, username || undefined)
+  const total = await getLinkCount(
+    platform || undefined,
+    search || undefined,
+    tag || undefined,
+    username || undefined,
+    status || undefined,
+    contributorId
+  )
 
   return c.json({
     total,
@@ -858,6 +877,84 @@ app.delete('/api/admin/logs/clear', async (c) => {
   clearTelemetryBuffer()
   return c.json({ success: true, message: 'Telemetry in-memory buffer cleared' })
 })
+
+// --------------------------------------------
+// ADMIN LINKS MANAGEMENT
+// --------------------------------------------
+app.patch('/api/admin/links/:id', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid link ID' }, 400)
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    status?: string
+    title?: string
+    description?: string
+    tags?: string[]
+    contributor_id?: number | null
+  }
+
+  await ensureDbReady()
+  const updated = await updateLinkDetails(id, {
+    status: body.status,
+    title: body.title,
+    description: body.description,
+    tags: body.tags,
+    contributorId: body.contributor_id,
+  })
+
+  if (!updated) return c.json({ error: 'Link not found' }, 404)
+  return c.json({ success: true, link: updated })
+})
+
+app.delete('/api/admin/links/:id', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid link ID' }, 400)
+
+  await ensureDbReady()
+  const deleted = await deleteLinkById(id)
+  if (!deleted) return c.json({ error: 'Link not found' }, 404)
+
+  return c.json({ success: true, id })
+})
+
+app.post('/api/admin/links/:id/check', async (c) => {
+  const firebaseUser = await requireAdmin(c)
+  if (!firebaseUser || 'status' in firebaseUser) return firebaseUser
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (!id) return c.json({ error: 'Invalid link ID' }, 400)
+
+  await ensureDbReady()
+  const rows = await (getDb())`SELECT * FROM links WHERE id = ${id} LIMIT 1`
+  if (!rows.length) return c.json({ error: 'Link not found' }, 404)
+
+  const link = rows[0]
+  const checkResult = await httpCheck(link.url)
+
+  await saveLink(
+    link.url,
+    checkResult.platform,
+    checkResult.status,
+    checkResult.metadata,
+    link.contributor_id
+  )
+
+  return c.json({
+    success: true,
+    id,
+    url: link.url,
+    previous_status: link.status,
+    new_status: checkResult.status,
+    metadata: checkResult.metadata,
+  })
+})
+
 
 
 app.get('/tags', async (c) => {

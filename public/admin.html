@@ -601,14 +601,97 @@
     <!-- Navigation Tabs -->
     <section>
       <div class="tabs-header">
-        <div class="tab-item active" id="tabContributorsBtn" onclick="switchTab('contributors')">Registered Contributors</div>
+        <div class="tab-item active" id="tabLinksBtn" onclick="switchTab('links')">🔗 Stored Links & Moderation</div>
+        <div class="tab-item" id="tabContributorsBtn" onclick="switchTab('contributors')">Registered Contributors</div>
         <div class="tab-item" id="tabTagsBtn" onclick="switchTab('tags')">Global Tags Catalog</div>
         <div class="tab-item" id="tabLogsBtn" onclick="switchTab('logs')">📜 Live Logs & Telemetry</div>
         <div class="tab-item" id="tabSystemBtn" onclick="switchTab('system')">System & Redis Status</div>
       </div>
 
+      <!-- Tab: Stored Links & Moderation -->
+      <div id="tabLinks" class="table-container">
+        <!-- Filter and Search Toolbar -->
+        <div style="padding: 1rem; border-bottom: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="linksSearchInput" onkeydown="if(event.key==='Enter') applyLinksFilter()" placeholder="Search URL, title, or keywords..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 230px;">
+            
+            <!-- Platform Filter -->
+            <select id="linksPlatformFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+              <option value="">All Platforms</option>
+              <option value="telegram">Telegram</option>
+              <option value="mega">MEGA</option>
+            </select>
+
+            <!-- Status Filter -->
+            <select id="linksStatusFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+              <option value="">All Statuses</option>
+              <option value="valid">Valid Only</option>
+              <option value="invalid">Invalid Only</option>
+            </select>
+
+            <!-- Contributor Filter Dropdown -->
+            <select id="linksContributorFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem; max-width: 170px;">
+              <option value="">All Contributors</option>
+            </select>
+
+            <!-- Sorting Dropdown -->
+            <select id="linksSortBy" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+              <option value="checked_at">Sort: Last Checked</option>
+              <option value="member_count">Sort: Member Count</option>
+              <option value="title">Sort: Title</option>
+              <option value="id">Sort: Link ID</option>
+            </select>
+
+            <!-- Order Direction -->
+            <select id="linksSortOrder" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+              <option value="desc">Desc ↓</option>
+              <option value="asc">Asc ↑</option>
+            </select>
+
+            <button class="btn" onclick="applyLinksFilter()" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+              Filter
+            </button>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span id="linksTotalCountDisplay" style="font-size: 0.8rem; color: var(--text-muted);">0 links</span>
+            <button class="btn btn-secondary" onclick="exportLinksJson()" style="font-size: 0.78rem; padding: 0.35rem 0.65rem;">
+              Export JSON
+            </button>
+          </div>
+        </div>
+
+        <!-- Links Table -->
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Platform & Status</th>
+              <th>Target URL / Channel</th>
+              <th>Title & Type</th>
+              <th>Members / Size</th>
+              <th>Contributor</th>
+              <th>Checked Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="linksTbody">
+            <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2rem;">Loading stored links catalog...</td></tr>
+          </tbody>
+        </table>
+
+        <!-- Links Pagination -->
+        <div style="padding: 0.75rem 1rem; border-top: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text-muted);">
+          <span id="linksPaginationInfo">Showing 0 - 0 of 0</span>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" id="linksPrevPageBtn" onclick="changeLinksPage(-1)" disabled style="padding: 0.3rem 0.6rem; font-size: 0.78rem;">← Previous</button>
+            <button class="btn btn-secondary" id="linksNextPageBtn" onclick="changeLinksPage(1)" disabled style="padding: 0.3rem 0.6rem; font-size: 0.78rem;">Next →</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Tab: Contributors Table -->
-      <div id="tabContributors" class="table-container">
+      <div id="tabContributors" class="table-container" style="display: none;">
         <div style="padding: 1rem; border-bottom: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
           <input type="text" id="contributorSearchInput" onkeyup="filterContributorsTable()" placeholder="Search by username or email..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 280px;">
           <button class="btn btn-secondary" onclick="openReassignModal()" style="font-size: 0.8rem;">
@@ -962,7 +1045,8 @@
       // Render Tags
       renderTags(data.tags || []);
 
-      // Load Contributors & System
+      // Load Stored Links, Contributors & System
+      loadStoredLinks();
       loadContributors();
       renderSystemStatus(data.server);
     }
@@ -977,6 +1061,7 @@
         });
         const data = await res.json();
         allContributors = data.contributors || [];
+        populateContributorFilterOptions(allContributors);
         renderContributorsList(allContributors);
       } catch (err) {
         tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger)">Failed to load contributors: ${err.message}</td></tr>`;
@@ -1451,8 +1536,237 @@
       }
     }
 
+    let currentLinksPage = 0;
+    const LINKS_PAGE_LIMIT = 50;
+    let storedLinksData = [];
+    let storedLinksTotal = 0;
+
+    async function loadStoredLinks() {
+      const tbody = document.getElementById('linksTbody');
+      try {
+        const search = (document.getElementById('linksSearchInput')?.value || '').trim();
+        const platform = document.getElementById('linksPlatformFilter')?.value || '';
+        const status = document.getElementById('linksStatusFilter')?.value || '';
+        const contributorId = document.getElementById('linksContributorFilter')?.value || '';
+        const sortBy = document.getElementById('linksSortBy')?.value || 'checked_at';
+        const sortOrder = document.getElementById('linksSortOrder')?.value || 'desc';
+
+        const params = new URLSearchParams({
+          limit: String(LINKS_PAGE_LIMIT),
+          offset: String(currentLinksPage * LINKS_PAGE_LIMIT),
+          sort_by: sortBy,
+          order: sortOrder,
+        });
+
+        if (search) params.append('search', search);
+        if (platform) params.append('platform', platform);
+        if (status) params.append('status', status);
+        if (contributorId) params.append('contributor_id', contributorId);
+
+        const res = await fetch(`/links?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to fetch stored links');
+
+        const data = await res.json();
+        storedLinksData = data.links || [];
+        storedLinksTotal = data.total || 0;
+
+        renderStoredLinksTable();
+        updateLinksPagination();
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color:var(--danger); text-align: center;">Error loading links: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function applyLinksFilter() {
+      currentLinksPage = 0;
+      loadStoredLinks();
+    }
+
+    function renderStoredLinksTable() {
+      const tbody = document.getElementById('linksTbody');
+      if (!storedLinksData.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 2.5rem; color: var(--text-muted);">No stored links matching your query or filter.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = storedLinksData.map(link => {
+        const platformBadge = link.platform === 'telegram' ? 'badge-primary' : 'badge-warning';
+        const statusBadge = link.status === 'valid' ? 'badge-success' : 'badge-danger';
+        const memberCountDisplay = link.member_count ? `${Number(link.member_count).toLocaleString()} members` : (link.type || '-');
+        const checkedTime = link.checked_at ? new Date(link.checked_at).toLocaleDateString() : '-';
+        const contributorDisplay = link.contributor_username ? `@${escapeHtml(link.contributor_username)}` : '<span style="color:var(--text-muted)">Unknown</span>';
+
+        return `
+          <tr id="link-row-${link.id}">
+            <td class="mono" style="font-size: 0.75rem;">${link.id}</td>
+            <td>
+              <span class="badge ${platformBadge}" style="text-transform: capitalize;">${link.platform}</span>
+              <span class="badge ${statusBadge}" style="text-transform: uppercase;">${link.status}</span>
+            </td>
+            <td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none; font-weight: 500;" title="${escapeHtml(link.url)}">
+                ${escapeHtml(link.url)}
+              </a>
+            </td>
+            <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <strong title="${escapeHtml(link.title || '')}">${escapeHtml(link.title || 'Untitled')}</strong>
+              ${link.type ? `<div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(link.type)}</div>` : ''}
+            </td>
+            <td style="font-size: 0.8rem;">${memberCountDisplay}</td>
+            <td style="font-size: 0.8rem;">
+              <span style="cursor: pointer; text-decoration: underline;" onclick="filterByContributorId(${link.contributor_id || "''"})" title="Filter by this contributor">
+                ${contributorDisplay}
+              </span>
+            </td>
+            <td class="mono" style="font-size: 0.73rem; color: var(--text-muted);">${checkedTime}</td>
+            <td>
+              <div style="display: flex; gap: 0.35rem; align-items: center;">
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem;" id="check-btn-${link.id}" onclick="recheckSingleLink(${link.id})" title="Re-check this link right now">
+                  ✓ Check
+                </button>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem;" onclick="editLinkModal(${link.id})" title="Edit link status or details">
+                  Edit
+                </button>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem; color: #f87171;" onclick="deleteSingleLink(${link.id}, '${escapeHtml(link.url)}')" title="Delete from catalog">
+                  ×
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function updateLinksPagination() {
+      const start = storedLinksTotal === 0 ? 0 : currentLinksPage * LINKS_PAGE_LIMIT + 1;
+      const end = Math.min((currentLinksPage + 1) * LINKS_PAGE_LIMIT, storedLinksTotal);
+      document.getElementById('linksPaginationInfo').textContent = `Showing ${start} - ${end} of ${storedLinksTotal.toLocaleString()} links`;
+      document.getElementById('linksTotalCountDisplay').textContent = `${storedLinksTotal.toLocaleString()} total links`;
+
+      document.getElementById('linksPrevPageBtn').disabled = currentLinksPage === 0;
+      document.getElementById('linksNextPageBtn').disabled = end >= storedLinksTotal;
+    }
+
+    function changeLinksPage(delta) {
+      currentLinksPage = Math.max(0, currentLinksPage + delta);
+      loadStoredLinks();
+    }
+
+    function filterByContributorId(id) {
+      if (!id) return;
+      const sel = document.getElementById('linksContributorFilter');
+      if (sel) {
+        sel.value = String(id);
+        applyLinksFilter();
+      }
+    }
+
+    async function recheckSingleLink(linkId) {
+      const btn = document.getElementById(`check-btn-${linkId}`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '...';
+      }
+
+      try {
+        const res = await fetch(`/api/admin/links/${linkId}/check`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to check link');
+
+        showToast(`Link #${linkId} rechecked: [${data.previous_status} → ${data.new_status}]`);
+        loadStoredLinks();
+        initDashboard();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '✓ Check';
+        }
+      }
+    }
+
+    async function editLinkModal(linkId) {
+      const link = storedLinksData.find(l => l.id === linkId);
+      if (!link) return;
+
+      const newStatus = prompt(`Change status for "${link.url}" (valid, invalid):`, link.status);
+      if (newStatus === null) return;
+      const cleanStatus = newStatus.trim().toLowerCase();
+      if (!['valid', 'invalid'].includes(cleanStatus)) {
+        alert('Status must be either "valid" or "invalid"');
+        return;
+      }
+
+      const newTitle = prompt('Edit Title (leave empty to keep current):', link.title || '');
+      if (newTitle === null) return;
+
+      try {
+        const res = await fetch(`/api/admin/links/${linkId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            status: cleanStatus,
+            title: newTitle.trim() || link.title,
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update link');
+
+        showToast(`Link #${linkId} updated successfully`);
+        loadStoredLinks();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteSingleLink(linkId, url) {
+      if (!confirm(`Are you sure you want to delete this link from the catalog?\n\n${url}`)) return;
+
+      try {
+        const res = await fetch(`/api/admin/links/${linkId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to delete link');
+
+        showToast(`Link #${linkId} deleted`);
+        loadStoredLinks();
+        initDashboard();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function exportLinksJson() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(storedLinksData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `telecheck_links_page_${currentLinksPage + 1}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function populateContributorFilterOptions(contributors) {
+      const sel = document.getElementById('linksContributorFilter');
+      if (!sel) return;
+      const currentVal = sel.value;
+      sel.innerHTML = '<option value="">All Contributors</option>' + 
+        contributors.map(c => `<option value="${c.id}">${escapeHtml(c.username)} (${c.links_added} links)</option>`).join('');
+      sel.value = currentVal;
+    }
+
     function switchTab(tab) {
       document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+      document.getElementById('tabLinks').style.display = 'none';
       document.getElementById('tabContributors').style.display = 'none';
       document.getElementById('tabTags').style.display = 'none';
       document.getElementById('tabLogs').style.display = 'none';
@@ -1463,9 +1777,14 @@
         logsPollingInterval = null;
       }
 
-      if (tab === 'contributors') {
+      if (tab === 'links') {
+        document.getElementById('tabLinksBtn').classList.add('active');
+        document.getElementById('tabLinks').style.display = 'block';
+        loadStoredLinks();
+      } else if (tab === 'contributors') {
         document.getElementById('tabContributorsBtn').classList.add('active');
         document.getElementById('tabContributors').style.display = 'block';
+        loadContributors();
       } else if (tab === 'tags') {
         document.getElementById('tabTagsBtn').classList.add('active');
         document.getElementById('tabTags').style.display = 'block';
@@ -1473,7 +1792,6 @@
         document.getElementById('tabLogsBtn').classList.add('active');
         document.getElementById('tabLogs').style.display = 'block';
         fetchAdminLogs();
-        // Setup 3s polling for live logs
         logsPollingInterval = setInterval(() => {
           if (document.getElementById('autoScrollLogs')?.checked) {
             fetchAdminLogs();
