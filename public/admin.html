@@ -205,20 +205,20 @@
 
     /* Main container */
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       width: 100%;
       margin: 0 auto;
-      padding: 2rem 1.5rem;
+      padding: 1.5rem;
       display: flex;
       flex-direction: column;
-      gap: 2rem;
+      gap: 1.5rem;
       flex: 1;
     }
 
     /* Stats Grid */
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 1rem;
     }
 
@@ -226,16 +226,16 @@
       background: var(--surface-card);
       border: 1px solid var(--surface-border);
       border-radius: 12px;
-      padding: 1.25rem;
+      padding: 1.15rem 1.25rem;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.35rem;
       position: relative;
       overflow: hidden;
     }
 
     .stat-card .label {
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -243,7 +243,7 @@
     }
 
     .stat-card .value {
-      font-size: 1.85rem;
+      font-size: 1.75rem;
       font-weight: 700;
       letter-spacing: -0.02em;
     }
@@ -258,7 +258,7 @@
       background: var(--surface-card);
       border: 1px solid var(--surface-border);
       border-radius: 12px;
-      padding: 1.25rem;
+      padding: 1rem 1.25rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -267,13 +267,13 @@
     }
 
     .actions-card h3 {
-      font-size: 1.05rem;
-      margin-bottom: 0.2rem;
+      font-size: 1rem;
+      margin-bottom: 0.15rem;
     }
 
     .actions-card p {
       color: var(--text-muted);
-      font-size: 0.82rem;
+      font-size: 0.8rem;
     }
 
     .button-group {
@@ -287,22 +287,29 @@
     .tabs-header {
       display: flex;
       border-bottom: 1px solid var(--surface-border);
-      gap: 1.5rem;
+      gap: 1.75rem;
       margin-bottom: 1rem;
     }
 
     .tab-item {
-      padding: 0.5rem 0.25rem;
+      padding: 0.65rem 0.2rem;
       color: var(--text-muted);
       cursor: pointer;
       font-weight: 600;
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       border-bottom: 2px solid transparent;
       transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .tab-item:hover {
+      color: var(--text);
     }
 
     .tab-item.active {
-      color: var(--text);
+      color: #60a5fa;
       border-bottom-color: var(--primary);
     }
 
@@ -311,55 +318,105 @@
       background: var(--surface-card);
       border: 1px solid var(--surface-border);
       border-radius: 12px;
-      overflow-x: auto;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.85rem;
+      font-size: 0.84rem;
       text-align: left;
     }
 
     th {
-      background: #151518;
+      background: #141418;
       color: var(--text-muted);
       font-weight: 600;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.06em;
       padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--surface-border);
+      white-space: nowrap;
     }
 
     td {
-      padding: 0.85rem 1rem;
-      border-bottom: 1px solid var(--surface-border);
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
     }
 
     tr:last-child td {
       border-bottom: 0;
     }
 
-    tr:hover td {
-      background: rgba(255, 255, 255, 0.02);
+    tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.025);
     }
 
     .mono {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
     }
 
     .badge {
-      display: inline-block;
-      padding: 0.15rem 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.55rem;
       border-radius: 6px;
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       font-weight: 600;
+      letter-spacing: 0.02em;
     }
-    .badge-primary { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-    .badge-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
-    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .badge-primary { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.25); }
+    .badge-success { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+    .badge-warning { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); }
+    .badge-danger { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
+    .badge-neutral { background: rgba(148, 163, 184, 0.1); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.2); }
+
+    /* Filter Inputs */
+    .filter-ctrl {
+      background: #0d0d10;
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 0.45rem 0.75rem;
+      color: var(--text);
+      font-size: 0.82rem;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .filter-ctrl:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    .btn-action-icon {
+      padding: 0.3rem 0.55rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 6px;
+      background: #1c1c22;
+      border: 1px solid var(--surface-border);
+      color: #cbd5e1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: all 0.15s;
+    }
+    .btn-action-icon:hover {
+      background: #282832;
+      color: white;
+      border-color: #3b82f6;
+    }
+    .btn-action-danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border-color: #ef4444;
+    }
 
     /* Tag pill */
     .tag-chip {
@@ -611,53 +668,72 @@
       <!-- Tab: Stored Links & Moderation -->
       <div id="tabLinks" class="table-container">
         <!-- Filter and Search Toolbar -->
-        <div style="padding: 1rem; border-bottom: 1px solid var(--surface-border); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-          <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <input type="text" id="linksSearchInput" onkeydown="if(event.key==='Enter') applyLinksFilter()" placeholder="Search URL, title, or keywords..." style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.8rem; color: white; font-size: 0.85rem; width: 230px;">
-            
+        <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--surface-border); display: flex; flex-direction: column; gap: 0.85rem; background: #111114;">
+          <!-- Top Row: Filters & Inputs -->
+          <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+            <div style="position: relative; flex: 1; min-width: 240px;">
+              <input type="text" id="linksSearchInput" onkeydown="if(event.key==='Enter') applyLinksFilter()" placeholder="Search URL, channel name, or keywords..." class="filter-ctrl" style="width: 100%; padding-left: 2rem;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--text-muted);">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+
             <!-- Platform Filter -->
-            <select id="linksPlatformFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
-              <option value="">All Platforms</option>
+            <select id="linksPlatformFilter" onchange="applyLinksFilter()" class="filter-ctrl">
+              <option value="">Platform: All</option>
               <option value="telegram">Telegram</option>
               <option value="mega">MEGA</option>
             </select>
 
             <!-- Status Filter -->
-            <select id="linksStatusFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
-              <option value="">All Statuses</option>
+            <select id="linksStatusFilter" onchange="applyLinksFilter()" class="filter-ctrl">
+              <option value="">Status: All</option>
               <option value="valid">Valid Only</option>
               <option value="invalid">Invalid Only</option>
             </select>
 
             <!-- Contributor Filter Dropdown -->
-            <select id="linksContributorFilter" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem; max-width: 170px;">
+            <select id="linksContributorFilter" onchange="applyLinksFilter()" class="filter-ctrl" style="max-width: 180px;">
               <option value="">All Contributors</option>
             </select>
 
             <!-- Sorting Dropdown -->
-            <select id="linksSortBy" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+            <select id="linksSortBy" onchange="applyLinksFilter()" class="filter-ctrl">
               <option value="checked_at">Sort: Last Checked</option>
-              <option value="member_count">Sort: Member Count</option>
+              <option value="member_count">Sort: Members / Size</option>
               <option value="title">Sort: Title</option>
               <option value="id">Sort: Link ID</option>
             </select>
 
             <!-- Order Direction -->
-            <select id="linksSortOrder" onchange="applyLinksFilter()" style="background: #0e0e11; border: 1px solid var(--surface-border); border-radius: 8px; padding: 0.45rem 0.6rem; color: white; font-size: 0.85rem;">
+            <select id="linksSortOrder" onchange="applyLinksFilter()" class="filter-ctrl">
               <option value="desc">Desc ↓</option>
               <option value="asc">Asc ↑</option>
             </select>
 
-            <button class="btn" onclick="applyLinksFilter()" style="padding: 0.4rem 0.75rem; font-size: 0.8rem;">
-              Filter
+            <button class="btn" onclick="applyLinksFilter()" style="padding: 0.45rem 0.9rem; font-size: 0.82rem;">
+              Search
             </button>
           </div>
 
-          <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <span id="linksTotalCountDisplay" style="font-size: 0.8rem; color: var(--text-muted);">0 links</span>
-            <button class="btn btn-secondary" onclick="exportLinksJson()" style="font-size: 0.78rem; padding: 0.35rem 0.65rem;">
-              Export JSON
-            </button>
+          <!-- Bottom Row: Meta summary & actions -->
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.6rem;">
+              <span class="badge badge-neutral" id="linksTotalCountDisplay">0 links</span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Click any @contributor tag to quick-filter</span>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <button class="btn btn-secondary" onclick="exportLinksJson()" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; display: inline-flex; align-items: center; gap: 0.4rem;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export JSON
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1598,36 +1674,46 @@
 
         return `
           <tr id="link-row-${link.id}">
-            <td class="mono" style="font-size: 0.75rem;">${link.id}</td>
+            <td class="mono" style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">#${link.id}</td>
             <td>
-              <span class="badge ${platformBadge}" style="text-transform: capitalize;">${link.platform}</span>
-              <span class="badge ${statusBadge}" style="text-transform: uppercase;">${link.status}</span>
+              <div style="display: flex; gap: 0.35rem; align-items: center; flex-wrap: nowrap;">
+                <span class="badge ${platformBadge}" style="text-transform: capitalize;">${link.platform}</span>
+                <span class="badge ${statusBadge}" style="text-transform: uppercase;">${link.status}</span>
+              </div>
             </td>
-            <td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" style="color: var(--primary); text-decoration: none; font-weight: 500;" title="${escapeHtml(link.url)}">
-                ${escapeHtml(link.url)}
+            <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;" title="${escapeHtml(link.url)}">
+                <span>${escapeHtml(link.url)}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6; flex-shrink: 0;">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
               </a>
             </td>
-            <td style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              <strong title="${escapeHtml(link.title || '')}">${escapeHtml(link.title || 'Untitled')}</strong>
-              ${link.type ? `<div style="font-size: 0.72rem; color: var(--text-muted);">${escapeHtml(link.type)}</div>` : ''}
+            <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <div style="font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(link.title || '')}">${escapeHtml(link.title || 'Untitled')}</div>
+              ${link.type ? `<div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(link.type)}</div>` : ''}
             </td>
-            <td style="font-size: 0.8rem;">${memberCountDisplay}</td>
+            <td style="font-size: 0.8rem; font-weight: 500; color: #cbd5e1;">${memberCountDisplay}</td>
             <td style="font-size: 0.8rem;">
-              <span style="cursor: pointer; text-decoration: underline;" onclick="filterByContributorId(${link.contributor_id || "''"})" title="Filter by this contributor">
+              <span class="badge badge-neutral" style="cursor: pointer; transition: all 0.15s;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='rgba(148,163,184,0.2)'" onclick="filterByContributorId(${link.contributor_id || "''"})" title="Click to filter by this user">
                 ${contributorDisplay}
               </span>
             </td>
             <td class="mono" style="font-size: 0.73rem; color: var(--text-muted);">${checkedTime}</td>
             <td>
               <div style="display: flex; gap: 0.35rem; align-items: center;">
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem;" id="check-btn-${link.id}" onclick="recheckSingleLink(${link.id})" title="Re-check this link right now">
-                  ✓ Check
+                <button class="btn-action-icon" id="check-btn-${link.id}" onclick="recheckSingleLink(${link.id})" title="Re-check this link in real time">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  Check
                 </button>
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem;" onclick="editLinkModal(${link.id})" title="Edit link status or details">
+                <button class="btn-action-icon" onclick="editLinkModal(${link.id})" title="Edit link status or title">
                   Edit
                 </button>
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.45rem; font-size: 0.73rem; color: #f87171;" onclick="deleteSingleLink(${link.id}, '${escapeHtml(link.url)}')" title="Delete from catalog">
+                <button class="btn-action-icon btn-action-danger" onclick="deleteSingleLink(${link.id}, '${escapeHtml(link.url)}')" title="Delete from catalog">
                   ×
                 </button>
               </div>
