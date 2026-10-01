@@ -372,6 +372,42 @@
       white-space: nowrap;
     }
 
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+
+    th.sortable:hover {
+      color: #f4f4f5;
+      background: #1a1a20;
+    }
+
+    th.sortable.sorted {
+      color: #60a5fa;
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    th.sortable .th-content {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    th.sortable .sort-icon {
+      font-size: 13px;
+      color: #52525b;
+      transition: color 0.15s ease;
+    }
+
+    th.sortable:hover .sort-icon {
+      color: #a1a1aa;
+    }
+
+    th.sortable.sorted .sort-icon {
+      color: #60a5fa;
+    }
+
     td {
       padding: 0.75rem 1rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
@@ -827,12 +863,32 @@
         <table>
           <thead>
             <tr>
-              <th style="width: 70px;">ID</th>
-              <th style="width: 40px; text-align: center;">Plat</th>
-              <th>Channel / Target Title</th>
-              <th style="width: 130px;">Members</th>
+              <th class="sortable" id="th-link-id" onclick="handleTableSort('id')" style="width: 75px;" title="Sort by Link ID">
+                <span class="th-content">
+                  <span>ID</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-id"></i>
+                </span>
+              </th>
+              <th style="width: 45px; text-align: center;">Plat</th>
+              <th class="sortable" id="th-link-title" onclick="handleTableSort('title')" title="Sort by Channel / Target Title">
+                <span class="th-content">
+                  <span>Channel / Target Title</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-title"></i>
+                </span>
+              </th>
+              <th class="sortable" id="th-link-member_count" onclick="handleTableSort('member_count')" style="width: 130px;" title="Sort by Members / Size">
+                <span class="th-content">
+                  <span>Members</span>
+                  <i class="ri-expand-up-down-line sort-icon" id="sort-icon-member_count"></i>
+                </span>
+              </th>
               <th style="width: 140px;">Contributor</th>
-              <th style="width: 95px;">Checked</th>
+              <th class="sortable sorted" id="th-link-checked_at" onclick="handleTableSort('checked_at')" style="width: 105px;" title="Sort by Last Checked Date">
+                <span class="th-content">
+                  <span>Checked</span>
+                  <i class="ri-arrow-down-line sort-icon" id="sort-icon-checked_at"></i>
+                </span>
+              </th>
               <th style="width: 105px; text-align: right;">Actions</th>
             </tr>
           </thead>
@@ -1781,26 +1837,82 @@
       }
     }
 
+    const SORTABLE_COLUMNS = ['id', 'title', 'member_count', 'checked_at'];
+
+    function syncTableHeaderSortIndicators(activeSortBy, activeSortOrder) {
+      SORTABLE_COLUMNS.forEach(col => {
+        const th = document.getElementById(`th-link-${col}`);
+        const icon = document.getElementById(`sort-icon-${col}`);
+        if (!th || !icon) return;
+
+        if (col === activeSortBy) {
+          th.classList.add('sorted');
+          if (activeSortOrder === 'asc') {
+            icon.className = 'ri-arrow-up-line sort-icon';
+          } else {
+            icon.className = 'ri-arrow-down-line sort-icon';
+          }
+        } else {
+          th.classList.remove('sorted');
+          icon.className = 'ri-expand-up-down-line sort-icon';
+        }
+      });
+    }
+
+    function handleTableSort(column) {
+      if (!SORTABLE_COLUMNS.includes(column)) return;
+
+      const sortBySelect = document.getElementById('linksSortBy');
+      const sortOrderInput = document.getElementById('linksSortOrder');
+      const sortOrderText = document.getElementById('linksSortOrderText');
+      const sortOrderIcon = document.getElementById('linksSortOrderIcon');
+
+      let currentSortBy = sortBySelect ? sortBySelect.value : 'checked_at';
+      let currentOrder = sortOrderInput ? sortOrderInput.value : 'desc';
+
+      let newOrder = 'desc';
+      if (currentSortBy === column) {
+        // Toggle direction if clicking the same column
+        newOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+      } else {
+        // Default to desc (or asc for title/id if preferred)
+        newOrder = column === 'title' ? 'asc' : 'desc';
+      }
+
+      // Sync select & hidden inputs
+      if (sortBySelect) sortBySelect.value = column;
+      if (sortOrderInput) sortOrderInput.value = newOrder;
+      if (sortOrderText) sortOrderText.textContent = newOrder === 'asc' ? 'Asc' : 'Desc';
+      if (sortOrderIcon) sortOrderIcon.className = newOrder === 'asc' ? 'ri-sort-asc' : 'ri-sort-desc';
+
+      syncTableHeaderSortIndicators(column, newOrder);
+      applyLinksFilter();
+    }
+
     function toggleLinksSortOrder() {
+      const sortBySelect = document.getElementById('linksSortBy');
       const input = document.getElementById('linksSortOrder');
       const icon = document.getElementById('linksSortOrderIcon');
       const text = document.getElementById('linksSortOrderText');
       if (!input) return;
 
-      if (input.value === 'desc') {
-        input.value = 'asc';
-        if (text) text.textContent = 'Asc';
-        if (icon) icon.className = 'ri-sort-asc';
-      } else {
-        input.value = 'desc';
-        if (text) text.textContent = 'Desc';
-        if (icon) icon.className = 'ri-sort-desc';
-      }
+      const newOrder = input.value === 'desc' ? 'asc' : 'desc';
+      input.value = newOrder;
+      if (text) text.textContent = newOrder === 'asc' ? 'Asc' : 'Desc';
+      if (icon) icon.className = newOrder === 'asc' ? 'ri-sort-asc' : 'ri-sort-desc';
+
+      const currentSortBy = sortBySelect ? sortBySelect.value : 'checked_at';
+      syncTableHeaderSortIndicators(currentSortBy, newOrder);
       applyLinksFilter();
     }
 
     function applyLinksFilter() {
       currentLinksPage = 0;
+      const sortBySelect = document.getElementById('linksSortBy');
+      const sortOrderInput = document.getElementById('linksSortOrder');
+      const currentSortBy = sortBySelect ? sortBySelect.value : 'checked_at';
+      const currentOrder = sortOrderInput ? sortOrderInput.value : 'desc';
+      syncTableHeaderSortIndicators(currentSortBy, currentOrder);
       loadStoredLinks();
     }
 
